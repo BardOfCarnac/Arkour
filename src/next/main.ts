@@ -34,7 +34,18 @@ app.innerHTML = `
         <input id="scrub" type="range" min="0" max="1" step="0.001" value="0" aria-label="Timeline" />
       </section>
 
-      <section class="mobile-controls" aria-label="Mobile acceptance controls">
+      <section class="mobile-steering" aria-label="Mobile steering controls">
+        <span class="mobile-steering-label">STEER</span>
+        <div class="steer-grid">
+          <button id="steer-up" class="steer-button steer-up" type="button" aria-label="Steer up">▲</button>
+          <button id="steer-left" class="steer-button steer-left" type="button" aria-label="Steer left">◀</button>
+          <button id="steer-centre" class="steer-button steer-centre" type="button" aria-label="Recenter steering">◎</button>
+          <button id="steer-right" class="steer-button steer-right" type="button" aria-label="Steer right">▶</button>
+          <button id="steer-down" class="steer-button steer-down" type="button" aria-label="Steer down">▼</button>
+        </div>
+      </section>
+
+      <section class="mobile-controls" aria-label="Mobile playback controls">
         <input id="mobile-scrub" class="mobile-scrub" type="range" min="0" max="1" step="0.001" value="0" aria-label="Timeline" />
         <div class="mobile-button-row">
           <button id="mobile-back" class="mobile-step" type="button" aria-label="Back five seconds">−5s</button>
@@ -106,6 +117,62 @@ mobileScrub.addEventListener('input', () => {
   scrub.value = mobileScrub.value;
   scrub.dispatchEvent(new Event('input', { bubbles: true }));
   syncMobilePlay();
+});
+
+// The acceptance runtime already treats pointer position as steering/look input.
+// Mobile has no hover pointer, so the D-pad maintains a virtual pointer position
+// and feeds it through the exact same input path. Values are deliberately allowed
+// beyond the physical screen bounds to provide a useful steering range on a phone.
+const virtualSteer = { x: 0, y: 0 };
+const STEER_LIMIT = 4.0;
+const STEER_STEP = 0.22;
+
+const emitVirtualSteer = (): void => {
+  const width = Math.max(window.innerWidth, 1);
+  const height = Math.max(window.innerHeight, 1);
+  window.dispatchEvent(new PointerEvent('pointermove', {
+    clientX: width * (0.5 + virtualSteer.x / 2),
+    clientY: height * (0.5 - virtualSteer.y / 2),
+    pointerType: 'touch',
+  }));
+};
+
+const nudgeSteer = (dx: number, dy: number): void => {
+  virtualSteer.x = Math.max(-STEER_LIMIT, Math.min(STEER_LIMIT, virtualSteer.x + dx));
+  virtualSteer.y = Math.max(-STEER_LIMIT, Math.min(STEER_LIMIT, virtualSteer.y + dy));
+  emitVirtualSteer();
+};
+
+const bindSteerHold = (id: string, dx: number, dy: number): void => {
+  const button = get<HTMLButtonElement>(id);
+  let timer: number | null = null;
+
+  const step = (): void => nudgeSteer(dx * STEER_STEP, dy * STEER_STEP);
+  const stop = (): void => {
+    if (timer !== null) window.clearInterval(timer);
+    timer = null;
+  };
+
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    button.setPointerCapture?.(event.pointerId);
+    step();
+    stop();
+    timer = window.setInterval(step, 55);
+  });
+  button.addEventListener('pointerup', stop);
+  button.addEventListener('pointercancel', stop);
+  button.addEventListener('lostpointercapture', stop);
+};
+
+bindSteerHold('steer-left', -1, 0);
+bindSteerHold('steer-right', 1, 0);
+bindSteerHold('steer-up', 0, 1);
+bindSteerHold('steer-down', 0, -1);
+get<HTMLButtonElement>('steer-centre').addEventListener('click', () => {
+  virtualSteer.x = 0;
+  virtualSteer.y = 0;
+  emitVirtualSteer();
 });
 
 new MutationObserver(syncMobilePlay).observe(playButton, { childList: true, characterData: true, subtree: true });

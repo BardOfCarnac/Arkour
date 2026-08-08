@@ -1,5 +1,5 @@
 import './styles.css';
-import { generateArchitecture } from './architecture/generate';
+import { generateStructuralArchitecture } from './architecture/structural';
 import { RunRuntime } from './run/runtime';
 import { createAcceptanceWorld } from './run/world';
 
@@ -41,7 +41,7 @@ const get = <T extends HTMLElement>(id: string): T => {
 };
 
 const world = createAcceptanceWorld();
-const architecture = generateArchitecture(world, { seed: 4712 });
+const architecture = generateStructuralArchitecture(world, { seed: 4712 });
 
 const runtime = new RunRuntime(world, architecture, {
   canvasHost: get('viewport'),
@@ -57,3 +57,4 @@ const runtime = new RunRuntime(world, architecture, {
 });
 
 runtime.start();
+document.getElementById('boot-status')?.remove();

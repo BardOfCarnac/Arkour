@@ -5,9 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#020406" />
     <title>Arkour — Run</title>
+    <style>
+      #boot-status {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-content: center;
+        gap: 8px;
+        padding: 24px;
+        color: #dce8ed;
+        background: #020406;
+        text-align: center;
+        font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+      }
+      #boot-status strong { color: #2af1c8; font-size: 15px; }
+      #boot-status .boot-build { color: #71838d; }
+      #boot-status[data-error="true"] .boot-state { color: #ff7d7d; }
+    </style>
   </head>
   <body>
+    <div id="boot-status" role="status" aria-live="polite">
+      <strong>ARKOUR</strong>
+      <span class="boot-build">BUILD %VITE_BUILD_SHA% · %VITE_BUILD_TIME%</span>
+      <span class="boot-state">STARTING RUN…</span>
+    </div>
     <div id="app"></div>
+    <script>
+      const reportBootFailure = (message) => {
+        const boot = document.getElementById('boot-status');
+        if (!boot) return;
+        boot.dataset.error = 'true';
+        const state = boot.querySelector('.boot-state');
+        if (state) state.textContent = `START FAILED · ${message}`;
+      };
+      window.addEventListener('error', (event) => reportBootFailure(event.message || 'SCRIPT ERROR'));
+      window.addEventListener('unhandledrejection', (event) => reportBootFailure(String(event.reason || 'PROMISE ERROR')));
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

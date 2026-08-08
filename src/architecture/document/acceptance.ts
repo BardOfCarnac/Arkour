@@ -1,0 +1,45 @@
+import { ARCHITECTURE_DOCUMENT_VERSION, type ArchitectureDocument } from './types';
+
+/**
+ * Canonical test Architecture shared by the editor/import seam and the run.
+ * This mirrors the Password → File → Hellhound → three-way Control branch →
+ * second Control layer → Efreet example used by the route-first prototype.
+ */
+export const acceptanceArchitectureDocument: ArchitectureDocument = {
+  version: ARCHITECTURE_DOCUMENT_VERSION,
+  id: 'acceptance-three-way',
+  title: 'Acceptance Architecture',
+  entry: 'password-a',
+  nodes: [
+    { id: 'password-a', kind: 'password', label: 'PASSWORD', difficulty: 8, layout: { floor: 1, column: 0 } },
+    { id: 'file-a', kind: 'file', label: 'FILE', difficulty: 6, layout: { floor: 2, column: 0 } },
+    { id: 'hellhound-a', kind: 'blackIce', label: 'HELLHOUND', subtype: 'Hellhound', layout: { floor: 3, column: 0 } },
+
+    { id: 'control-left-a', kind: 'control', label: 'CONTROL NODE', difficulty: 6, layout: { floor: 4, column: -1 } },
+    { id: 'control-center-a', kind: 'control', label: 'CONTROL NODE', difficulty: 6, layout: { floor: 4, column: 0 } },
+    { id: 'control-right-a', kind: 'control', label: 'CONTROL NODE', difficulty: 6, layout: { floor: 4, column: 1 } },
+
+    { id: 'control-left-b', kind: 'control', label: 'CONTROL NODE', difficulty: 6, layout: { floor: 5, column: -1 } },
+    { id: 'control-center-b', kind: 'control', label: 'CONTROL NODE', difficulty: 6, layout: { floor: 5, column: 0 } },
+    { id: 'control-right-b', kind: 'control', label: 'CONTROL NODE', difficulty: 6, layout: { floor: 5, column: 1 } },
+
+    { id: 'efreet-a', kind: 'demon', label: 'EFREET', subtype: 'Efreet', layout: { floor: 6, column: 0 } },
+  ],
+  edges: [
+    { from: 'password-a', to: 'file-a' },
+    { from: 'file-a', to: 'hellhound-a' },
+
+    { from: 'hellhound-a', to: 'control-left-a', label: 'LEFT', order: 0 },
+    { from: 'hellhound-a', to: 'control-center-a', label: 'DOWN', order: 1, default: true },
+    { from: 'hellhound-a', to: 'control-right-a', label: 'RIGHT', order: 2 },
+
+    { from: 'control-left-a', to: 'control-left-b' },
+    { from: 'control-center-a', to: 'control-center-b' },
+    { from: 'control-right-a', to: 'control-right-b' },
+    { from: 'control-center-b', to: 'efreet-a' },
+  ],
+  metadata: {
+    source: 'arkour-acceptance',
+    purpose: 'editor-import-and-route-first-runtime',
+  },
+};

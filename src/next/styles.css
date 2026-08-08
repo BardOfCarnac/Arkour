@@ -61,6 +61,8 @@ button, input { font: inherit; }
 .controls button:hover { border-color: #58f0d8; }
 .controls input[type="range"] { width: min(320px, 34vw); accent-color: #58f0d8; }
 
+.mobile-controls { display: none; }
+
 .corner-mark {
   position: absolute;
   right: 16px;
@@ -79,7 +81,72 @@ button, input { font: inherit; }
   .stage-panel small { font-size: 7px; }
   .note-panel { display: none; }
   .corner-mark { display: none; }
-  .controls { left: 9px; right: 9px; bottom: 9px; transform: none; justify-content: center; }
-  .controls button { padding: 8px; }
-  .controls input[type="range"] { width: 45vw; }
+  .desktop-controls { display: none; }
+
+  .mobile-controls {
+    pointer-events: auto;
+    position: absolute;
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    display: grid;
+    gap: 9px;
+    padding: 10px;
+    border: 1px solid rgba(80, 241, 216, .24);
+    background: rgba(2, 7, 8, .82);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, .34);
+  }
+
+  .mobile-scrub {
+    width: 100%;
+    height: 24px;
+    margin: 0;
+    accent-color: #58f0d8;
+    touch-action: pan-x;
+  }
+
+  .mobile-button-row {
+    display: grid;
+    grid-template-columns: 1fr 1.18fr 1fr .82fr;
+    gap: 8px;
+  }
+
+  .mobile-button-row button {
+    min-width: 0;
+    min-height: 54px;
+    border: 1px solid rgba(80, 241, 216, .3);
+    border-radius: 8px;
+    background: rgba(7, 16, 18, .96);
+    color: #e9fffb;
+    font: 600 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .04em;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .mobile-button-row button:active {
+    transform: translateY(1px);
+    border-color: #58f0d8;
+    background: rgba(13, 32, 33, .98);
+  }
+
+  .mobile-button-row .mobile-primary {
+    border-color: rgba(88, 240, 216, .72);
+    color: #071011;
+    background: #58f0d8;
+    font-size: 22px;
+  }
+
+  .mobile-button-row .mobile-primary:active {
+    background: #75f7e3;
+  }
+
+  .mobile-reset { font-size: 22px !important; }
+}
+
+@media (max-width: 420px) {
+  .title-panel span { display: none; }
+  .stage-panel .eyebrow { display: none; }
+  .mobile-button-row button { min-height: 58px; }
 }

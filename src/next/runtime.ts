@@ -1,11 +1,10 @@
 import * as THREE from 'three';
 import type { ArchitectureDocument } from '../architecture/document/types';
 import { generateRouteFirstArchitecture } from '../architecture/route-first';
-import { RUN_CAMERA_PROFILE } from '../run/camera-profile';
 import { createRouteFrame, sampleRouteFrameAtDistance } from '../run/route-frame';
 import { RuntimeRoute } from '../run/route';
 import { addScenePlan } from '../run/scenery';
-import type { EncounterSpec, RunWorld } from '../run/types';
+import type { EncounterSpec, RunWorld, Vec3 } from '../run/types';
 
 interface AcceptanceElements {
   canvasHost: HTMLElement;
@@ -29,13 +28,26 @@ interface TourSample {
   globalDistance: number;
 }
 
+interface ArcCameraTour {
+  camera: THREE.CatmullRomCurve3;
+  look: THREE.CatmullRomCurve3;
+}
+
 const SURFACE_END = 0.275;
-const AUTO_DURATION = 42;
+const AUTO_DURATION = 48;
 const SURFACE_Y = 8;
+const MIRROR_FLOOR_RISE = 3.2;
+const MIRROR_HORIZONTAL_STEP = MIRROR_FLOOR_RISE * Math.sqrt(3);
+const MIRROR_AZIMUTH = Math.PI / 8;
 
 const cyan = 0x58f0d8;
 const cyanDim = 0x235a58;
 const routeRed = 0xff4054;
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+
+function vector([x, y, z]: Vec3): THREE.Vector3 {
+  return new THREE.Vector3(x, y, z);
+}
 
 function addOutlinedBox(
   scene: THREE.Scene,
@@ -58,16 +70,16 @@ function addSurface(scene: THREE.Scene): void {
   const fill = new THREE.MeshStandardMaterial({ color: 0x080d0f, roughness: 0.92, metalness: 0.16 });
   const edge = new THREE.LineBasicMaterial({ color: cyanDim, transparent: true, opacity: 0.62 });
 
-  addOutlinedBox(scene, new THREE.Vector3(40, 0.7, 120), new THREE.Vector3(-25, SURFACE_Y, 22), fill, edge);
-  addOutlinedBox(scene, new THREE.Vector3(40, 0.7, 120), new THREE.Vector3(25, SURFACE_Y, 22), fill, edge);
-  addOutlinedBox(scene, new THREE.Vector3(10, 0.7, 42), new THREE.Vector3(0, SURFACE_Y, -27), fill, edge);
-  addOutlinedBox(scene, new THREE.Vector3(10, 0.7, 86), new THREE.Vector3(0, SURFACE_Y, 57), fill, edge);
+  addOutlinedBox(scene, new THREE.Vector3(40, 0.7, 120), new THREE.Vector3(-25, SURFACE_Y, 18), fill, edge);
+  addOutlinedBox(scene, new THREE.Vector3(40, 0.7, 120), new THREE.Vector3(25, SURFACE_Y, 18), fill, edge);
+  addOutlinedBox(scene, new THREE.Vector3(10, 0.7, 42), new THREE.Vector3(0, SURFACE_Y, -31), fill, edge);
+  addOutlinedBox(scene, new THREE.Vector3(10, 0.7, 78), new THREE.Vector3(0, SURFACE_Y, 47), fill, edge);
 
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(5.2, 0.22, 8, 48),
     new THREE.MeshBasicMaterial({ color: routeRed }),
   );
-  ring.position.set(0, SURFACE_Y + 0.16, 3.8);
+  ring.position.set(0, SURFACE_Y + 0.16, 0);
   ring.rotation.x = Math.PI / 2;
   scene.add(ring);
 
@@ -84,7 +96,12 @@ function mirrorNodePosition(document: ArchitectureDocument, nodeId: string): THR
   const node = document.nodes.find((candidate) => candidate.id === nodeId);
   const floor = node?.layout?.floor ?? 1;
   const column = node?.layout?.column ?? 0;
-  return new THREE.Vector3(20 + column * 4.6, SURFACE_Y + 1.7 + floor * 2.7, -3 + floor * 1.25);
+  const horizontal = Math.abs(column) * MIRROR_HORIZONTAL_STEP;
+  return new THREE.Vector3(
+    20 + column * MIRROR_HORIZONTAL_STEP * Math.cos(MIRROR_AZIMUTH),
+    SURFACE_Y + 1.5 + floor * MIRROR_FLOOR_RISE,
+    -4 + horizontal * Math.sin(MIRROR_AZIMUTH),
+  );
 }
 
 function addSurfaceMirror(scene: THREE.Scene, document: ArchitectureDocument): void {
@@ -127,23 +144,56 @@ function addWireAccents(scene: THREE.Scene): void {
   }
 }
 
+function addStraightRail(
+  scene: THREE.Scene,
+  from: THREE.Vector3,
+  to: THREE.Vector3,
+  material: THREE.Material,
+  name: string,
+): void {
+  const direction = to.clone().sub(from);
+  const length = direction.length();
+  if (length < 1e-4) return;
+
+  const geometry = new THREE.CylinderGeometry(0.2, 0.2, 1, 7, 1, false);
+  const rail = new THREE.Mesh(geometry, material);
+  rail.name = name;
+  rail.position.copy(from).add(to).multiplyScalar(0.5);
+  rail.quaternion.setFromUnitVectors(Y_AXIS, direction.normalize());
+  rail.scale.y = length;
+  scene.add(rail);
+}
+
 function addRouteRails(scene: THREE.Scene, routes: Map<string, RuntimeRoute>): void {
   for (const route of routes.values()) {
-    const geometry = new THREE.TubeGeometry(
-      route.curve,
-      Math.max(72, Math.round(route.length * 1.6)),
-      0.2,
-      7,
-      false,
-    );
     const material = new THREE.MeshBasicMaterial({
       color: routeRed,
       transparent: true,
-      opacity: route.id === 'trunk' ? 0.96 : 0.66,
+      opacity: route.id === 'trunk' ? 0.96 : 0.72,
     });
-    const rail = new THREE.Mesh(geometry, material);
-    rail.name = `next-route:${route.id}`;
-    scene.add(rail);
+
+    route.spec.segments.forEach((segment, index) => {
+      if (segment.kind === 'line') {
+        addStraightRail(
+          scene,
+          vector(segment.from),
+          vector(segment.to),
+          material,
+          `next-route:${route.id}:${index}`,
+        );
+        return;
+      }
+
+      const curve = new THREE.QuadraticBezierCurve3(
+        vector(segment.from),
+        vector(segment.control),
+        vector(segment.to),
+      );
+      const geometry = new THREE.TubeGeometry(curve, 32, 0.2, 7, false);
+      const rail = new THREE.Mesh(geometry, material);
+      rail.name = `next-route:${route.id}:${index}`;
+      scene.add(rail);
+    });
   }
 }
 
@@ -184,6 +234,59 @@ function sampleTour(legs: TourLeg[], progress: number): TourSample {
   return { route: leg.route, distance: leg.route.length * local, globalDistance };
 }
 
+function nearestEncounterDistance(route: RuntimeRoute, distance: number): number {
+  let nearest = Number.POSITIVE_INFINITY;
+  for (const encounter of route.spec.encounters ?? []) {
+    nearest = Math.min(nearest, Math.abs(encounter.at * route.length - distance));
+  }
+  return nearest;
+}
+
+/**
+ * The red route remains hard and angular. The camera gets a separate smooth
+ * spline that wings around the reserved route corridor between nodes, then
+ * moves back toward the centreline as it approaches each major component.
+ */
+function buildArcCameraTour(legs: TourLeg[]): ArcCameraTour {
+  const totalLength = legs.reduce((sum, leg) => sum + leg.route.length, 0);
+  const count = Math.max(36, Math.ceil(totalLength / 7));
+  const cameraPoints: THREE.Vector3[] = [];
+  const lookPoints: THREE.Vector3[] = [];
+  const frame = createRouteFrame();
+  const lookFrame = createRouteFrame();
+
+  for (let index = 0; index <= count; index += 1) {
+    const u = index / count;
+    const sample = sampleTour(legs, u);
+    sampleRouteFrameAtDistance(sample.route, sample.distance, frame);
+
+    const nearest = nearestEncounterDistance(sample.route, sample.distance);
+    const betweenNodes = THREE.MathUtils.smoothstep(
+      THREE.MathUtils.clamp(nearest / 20, 0, 1),
+      0,
+      1,
+    );
+    const wing = Math.sin(sample.globalDistance / 25) * (0.55 + betweenNodes * 1.55);
+    const lift = 0.65 + betweenNodes * 0.55;
+
+    cameraPoints.push(
+      frame.position.clone()
+        .addScaledVector(frame.forward, -1.8)
+        .addScaledVector(frame.right, wing)
+        .addScaledVector(frame.up, lift),
+    );
+
+    const lookSample = sampleTour(legs, Math.min(1, u + 0.025));
+    sampleRouteFrameAtDistance(lookSample.route, lookSample.distance, lookFrame);
+    lookPoints.push(lookFrame.position.clone().addScaledVector(lookFrame.up, 0.15));
+  }
+
+  return {
+    camera: new THREE.CatmullRomCurve3(cameraPoints, false, 'catmullrom', 0.12),
+    look: new THREE.CatmullRomCurve3(lookPoints, false, 'catmullrom', 0.1),
+  };
+}
+
 function nextEncounter(route: RuntimeRoute, distance: number): EncounterSpec | undefined {
   return [...(route.spec.encounters ?? [])]
     .sort((a, b) => a.at - b.at)
@@ -191,8 +294,8 @@ function nextEncounter(route: RuntimeRoute, distance: number): EncounterSpec | u
 }
 
 function stageFor(timeline: number, sample: TourSample | null): { title: string; detail: string } {
-  if (timeline < 0.16) return { title: 'SURFACE APPROACH', detail: 'EDITOR GRAPH MIRROR // ACCESS POINT AHEAD' };
-  if (timeline < SURFACE_END) return { title: 'JACK-IN DESCENT', detail: 'SURFACE → RESERVED TRAVERSAL VOLUME' };
+  if (timeline < 0.16) return { title: 'SURFACE APPROACH', detail: 'CAMERAS, MAIN // SCHEMATIC GRAPH MIRROR' };
+  if (timeline < SURFACE_END) return { title: 'JACK-IN DESCENT', detail: 'HARD ROUTE // CURVED CAMERA APPROACH' };
   if (!sample) return { title: 'DESCENT', detail: 'ROUTE-FIRST CITY' };
 
   const encounter = nextEncounter(sample.route, sample.distance);
@@ -204,14 +307,29 @@ function stageFor(timeline: number, sample: TourSample | null): { title: string;
   return { title: 'VERTICAL TRANSIT', detail: sample.route.label.toUpperCase() };
 }
 
+function applyPointerLook(
+  cameraPosition: THREE.Vector3,
+  target: THREE.Vector3,
+  pointerRight: number,
+  pointerUp: number,
+): void {
+  const forward = target.clone().sub(cameraPosition).normalize();
+  const referenceUp = Math.abs(forward.y) > 0.94
+    ? new THREE.Vector3(0, 0, 1)
+    : new THREE.Vector3(0, 1, 0);
+  const right = new THREE.Vector3().crossVectors(referenceUp, forward).normalize();
+  const up = new THREE.Vector3().crossVectors(forward, right).normalize();
+  target.addScaledVector(right, pointerRight).addScaledVector(up, pointerUp);
+}
+
 export class NextAcceptanceRuntime {
   private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.PerspectiveCamera(70, 1, 0.16, 760);
+  private readonly camera = new THREE.PerspectiveCamera(70, 1, 0.16, 950);
   private readonly renderer: THREE.WebGLRenderer;
   private readonly routes = new Map<string, RuntimeRoute>();
   private readonly tour: TourLeg[];
-  private readonly frame = createRouteFrame();
-  private readonly lookFrame = createRouteFrame();
+  private readonly undergroundCamera: THREE.CatmullRomCurve3;
+  private readonly undergroundLook: THREE.CatmullRomCurve3;
   private readonly clock = new THREE.Clock();
   private readonly surfaceCamera = new THREE.CatmullRomCurve3([
     new THREE.Vector3(-52, 15.5, -34),
@@ -220,14 +338,14 @@ export class NextAcceptanceRuntime {
     new THREE.Vector3(-16, 12.2, -10),
     new THREE.Vector3(-8, 11.2, -5),
     new THREE.Vector3(-3, 10.5, -2),
-    new THREE.Vector3(0, 10.1, -4.2),
+    new THREE.Vector3(0, 10.1, -3.6),
   ], false, 'catmullrom', 0.32);
   private readonly surfaceLook = new THREE.CatmullRomCurve3([
     new THREE.Vector3(12, 11, -1),
     new THREE.Vector3(10, 10.5, 1),
     new THREE.Vector3(7, 9.7, 2),
-    new THREE.Vector3(3, 8.8, 4),
-    new THREE.Vector3(0, 6.8, 9),
+    new THREE.Vector3(3, 8.8, 2),
+    new THREE.Vector3(0, 4.2, 0),
   ], false, 'catmullrom', 0.32);
 
   private timeline = 0;
@@ -242,9 +360,12 @@ export class NextAcceptanceRuntime {
   ) {
     for (const spec of world.routes) this.routes.set(spec.id, new RuntimeRoute(spec));
     this.tour = buildDefaultTour(world, this.routes);
+    const arcTour = buildArcCameraTour(this.tour);
+    this.undergroundCamera = arcTour.camera;
+    this.undergroundLook = arcTour.look;
 
     this.scene.background = new THREE.Color(0x020406);
-    this.scene.fog = new THREE.FogExp2(0x020607, 0.0085);
+    this.scene.fog = new THREE.FogExp2(0x020607, 0.0068);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.innerWidth < 760 ? 1.2 : 1.55));
@@ -259,7 +380,7 @@ export class NextAcceptanceRuntime {
     addSurfaceMirror(this.scene, document);
 
     const glow = new THREE.PointLight(0xff4054, 4.4, 40, 1.8);
-    glow.position.set(0, SURFACE_Y + 1.5, 4);
+    glow.position.set(0, SURFACE_Y + 1.5, 0);
     this.scene.add(glow);
 
     this.elements.playButton.addEventListener('click', this.togglePlay);
@@ -310,27 +431,15 @@ export class NextAcceptanceRuntime {
       const u = THREE.MathUtils.smoothstep(this.timeline / SURFACE_END, 0, 1);
       this.surfaceCamera.getPointAt(u, this.camera.position);
       const target = this.surfaceLook.getPointAt(THREE.MathUtils.clamp(u * 1.08, 0, 1));
-      target.x += pointerRight;
-      target.y += pointerUp;
+      applyPointerLook(this.camera.position, target, pointerRight, pointerUp);
       this.camera.lookAt(target);
       return;
     }
 
-    sampleRouteFrameAtDistance(sample.route, sample.distance, this.frame);
-    sampleRouteFrameAtDistance(
-      sample.route,
-      Math.min(sample.route.length, sample.distance + 9.5),
-      this.lookFrame,
-    );
-
-    this.camera.position.copy(this.frame.position)
-      .addScaledVector(this.frame.forward, -RUN_CAMERA_PROFILE.trailDistance)
-      .addScaledVector(this.frame.up, RUN_CAMERA_PROFILE.upOffset)
-      .addScaledVector(this.frame.right, 1.25 + pointerRight);
-
-    const target = this.lookFrame.position.clone()
-      .addScaledVector(this.lookFrame.right, pointerRight * 0.5)
-      .addScaledVector(this.lookFrame.up, pointerUp);
+    const u = THREE.MathUtils.clamp((this.timeline - SURFACE_END) / (1 - SURFACE_END), 0, 1);
+    this.undergroundCamera.getPointAt(u, this.camera.position);
+    const target = this.undergroundLook.getPointAt(Math.min(1, u + 0.018));
+    applyPointerLook(this.camera.position, target, pointerRight, pointerUp);
     this.camera.lookAt(target);
   }
 

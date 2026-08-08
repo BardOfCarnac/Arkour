@@ -1,8 +1,8 @@
 {
   "$schema": "../schema/architecture-document-v1.schema.json",
   "version": 1,
-  "id": "acceptance-three-way",
-  "title": "Acceptance Architecture",
+  "id": "cameras-main",
+  "title": "Cameras, Main",
   "entry": "password-a",
   "nodes": [
     { "id": "password-a", "kind": "password", "label": "PASSWORD", "difficulty": 8, "layout": { "floor": 1, "column": 0 } },
@@ -33,7 +33,7 @@
     { "from": "control-center-b", "to": "efreet-a" }
   ],
   "metadata": {
-    "source": "arkour-acceptance",
+    "source": "cameras-main-reference",
     "purpose": "editor-import-and-route-first-runtime"
   }
 }

@@ -2,13 +2,13 @@ import { ARCHITECTURE_DOCUMENT_VERSION, type ArchitectureDocument } from './type
 
 /**
  * Canonical test Architecture shared by the editor/import seam and the run.
- * This mirrors the Password → File → Hellhound → three-way Control branch →
- * second Control layer → Efreet example used by the route-first prototype.
+ * This mirrors the Cameras, Main reference: Password → File → Hellhound →
+ * three Control branches → second Control layer → Efreet on the centre branch.
  */
 export const acceptanceArchitectureDocument: ArchitectureDocument = {
   version: ARCHITECTURE_DOCUMENT_VERSION,
-  id: 'acceptance-three-way',
-  title: 'Acceptance Architecture',
+  id: 'cameras-main',
+  title: 'Cameras, Main',
   entry: 'password-a',
   nodes: [
     { id: 'password-a', kind: 'password', label: 'PASSWORD', difficulty: 8, layout: { floor: 1, column: 0 } },
@@ -39,7 +39,7 @@ export const acceptanceArchitectureDocument: ArchitectureDocument = {
     { from: 'control-center-b', to: 'efreet-a' },
   ],
   metadata: {
-    source: 'arkour-acceptance',
+    source: 'cameras-main-reference',
     purpose: 'editor-import-and-route-first-runtime',
   },
 };

@@ -11,6 +11,19 @@ interface KeepoutCorridor {
 }
 
 /**
+ * An exact presentation path supplied by a renderer/presentation layer.
+ *
+ * `camera` is the sampled camera position. When matching `look` samples are
+ * supplied, the keep-out also reserves the sight line between camera and target,
+ * preventing large opaque scenery from sitting directly in the intended view.
+ */
+export interface PresentationKeepoutPath {
+  camera: readonly THREE.Vector3[];
+  look?: readonly THREE.Vector3[];
+  clearance?: number;
+}
+
+/**
  * Geometric authority used by scenery generation.
  *
  * The route corridor is deliberately independent from the presentation camera:
@@ -55,7 +68,7 @@ function sampleRouteCorridor(routes: Map<string, RuntimeRoute>): KeepoutCorridor
   };
 }
 
-function sampleCameraCorridor(routes: Map<string, RuntimeRoute>): KeepoutCorridor {
+function sampleDefaultCameraCorridor(routes: Map<string, RuntimeRoute>): KeepoutCorridor {
   const points: THREE.Vector3[] = [];
   const segments: Array<readonly [THREE.Vector3, THREE.Vector3]> = [];
   const frame = createRouteFrame();
@@ -83,10 +96,42 @@ function sampleCameraCorridor(routes: Map<string, RuntimeRoute>): KeepoutCorrido
   };
 }
 
-export function createSpatialKeepout(routes: Map<string, RuntimeRoute>): SpatialKeepout {
+function presentationCameraCorridor(paths: readonly PresentationKeepoutPath[]): KeepoutCorridor {
+  const points: THREE.Vector3[] = [];
+  const segments: Array<readonly [THREE.Vector3, THREE.Vector3]> = [];
+  let clearance = RUN_CAMERA_PROFILE.sceneryClearance;
+
+  for (const path of paths) {
+    if (path.camera.length === 0) continue;
+    clearance = Math.max(clearance, path.clearance ?? RUN_CAMERA_PROFILE.sceneryClearance);
+    appendSegments(points, segments, path.camera);
+
+    if (!path.look) continue;
+    const count = Math.min(path.camera.length, path.look.length);
+    for (let index = 0; index < count; index += 1) {
+      const camera = path.camera[index];
+      const look = path.look[index];
+      if (!camera || !look) continue;
+      // Reserve the actual viewing ray as well as the camera's travelled path.
+      // This prevents an admitted slab/bridge from being collision-safe yet
+      // completely blocking the authored shot.
+      segments.push([camera, look]);
+      points.push(look);
+    }
+  }
+
+  return { points, segments, clearance };
+}
+
+export function createSpatialKeepout(
+  routes: Map<string, RuntimeRoute>,
+  presentationPaths: readonly PresentationKeepoutPath[] = [],
+): SpatialKeepout {
   return {
     route: sampleRouteCorridor(routes),
-    camera: sampleCameraCorridor(routes),
+    camera: presentationPaths.length > 0
+      ? presentationCameraCorridor(presentationPaths)
+      : sampleDefaultCameraCorridor(routes),
   };
 }
 

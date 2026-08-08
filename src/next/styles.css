@@ -26,7 +26,8 @@ button, input { font: inherit; }
 .title-panel span { display: block; margin-top: 5px; color: #718d89; font: 9px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
 
 .stage-panel { position: absolute; right: 16px; top: 16px; width: min(350px, 42vw); padding: 12px 14px; }
-.stage-panel .eyebrow { display: block; color: #69827e; font: 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; }
+.stage-panel .eyebrow,
+.route-choice .eyebrow { display: block; color: #69827e; font: 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; }
 .stage-panel strong { display: block; margin-top: 6px; font: 500 15px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .09em; }
 .stage-panel small { display: block; margin-top: 5px; color: #55d9c7; font: 8px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
 .progress { height: 2px; margin-top: 10px; overflow: hidden; background: rgba(88, 240, 216, .1); }
@@ -34,6 +35,64 @@ button, input { font: inherit; }
 
 .note-panel { position: absolute; left: 16px; bottom: 16px; width: min(310px, 34vw); padding: 10px 12px; color: #73908b; font: 8px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .05em; }
 .note-panel b { color: #d8fff8; font-weight: 500; }
+
+.route-choice {
+  pointer-events: auto;
+  position: absolute;
+  left: 50%;
+  bottom: 76px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  padding: 12px;
+  border-color: rgba(255, 64, 84, .48);
+  background: linear-gradient(180deg, rgba(11, 6, 9, .94), rgba(3, 8, 10, .9));
+  box-shadow: 0 14px 44px rgba(0, 0, 0, .46), 0 0 28px rgba(255, 64, 84, .08);
+}
+.route-choice[hidden] { display: none !important; }
+.route-choice > strong {
+  display: block;
+  margin-top: 6px;
+  color: #f2fffc;
+  font: 600 13px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .1em;
+}
+.route-choice-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: 11px;
+}
+.route-choice-button {
+  min-height: 58px;
+  padding: 9px 10px;
+  border: 1px solid rgba(88, 240, 216, .34);
+  border-radius: 7px;
+  background: rgba(6, 15, 17, .96);
+  color: #e9fffb;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.route-choice-button strong {
+  display: block;
+  color: #58f0d8;
+  font: 700 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .12em;
+}
+.route-choice-button small {
+  display: block;
+  margin-top: 7px;
+  overflow: hidden;
+  color: #819d98;
+  font: 8px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .07em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.route-choice-button:hover,
+.route-choice-button:focus-visible { border-color: #58f0d8; outline: none; }
+.route-choice-button:active { transform: translateY(1px); background: rgba(12, 31, 32, .98); }
 
 .controls {
   pointer-events: auto;
@@ -61,8 +120,7 @@ button, input { font: inherit; }
 .controls button:hover { border-color: #58f0d8; }
 .controls input[type="range"] { width: min(320px, 34vw); accent-color: #58f0d8; }
 
-.mobile-controls,
-.mobile-steering { display: none; }
+.mobile-controls { display: none; }
 
 .corner-mark {
   position: absolute;
@@ -84,71 +142,20 @@ button, input { font: inherit; }
   .corner-mark { display: none; }
   .desktop-controls { display: none; }
 
-  .mobile-steering {
-    pointer-events: auto;
-    position: absolute;
+  .route-choice {
     left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
     bottom: calc(max(10px, env(safe-area-inset-bottom)) + 118px);
-    display: block;
-    width: 166px;
-    height: 182px;
-    padding: 9px;
-    border: 1px solid rgba(80, 241, 216, .28);
-    border-radius: 12px;
-    background: rgba(2, 7, 8, .74);
-    backdrop-filter: blur(9px);
-    box-shadow: 0 10px 34px rgba(0, 0, 0, .3);
-    touch-action: none;
-    user-select: none;
-    -webkit-user-select: none;
-    -webkit-tap-highlight-color: transparent;
+    transform: none;
+    width: auto;
+    padding: 11px;
   }
 
-  .mobile-steering-label {
-    display: block;
-    height: 20px;
-    color: rgba(88, 240, 216, .75);
-    text-align: center;
-    font: 700 8px/20px ui-monospace, SFMono-Regular, Menlo, monospace;
-    letter-spacing: .2em;
-  }
-
-  .steer-grid {
-    position: relative;
-    width: 146px;
-    height: 146px;
-  }
-
-  .steer-button {
-    position: absolute;
-    width: 48px;
-    height: 48px;
-    padding: 0;
-    border: 1px solid rgba(80, 241, 216, .38);
-    border-radius: 10px;
-    background: rgba(7, 16, 18, .96);
-    color: #e9fffb;
-    font: 700 20px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-    touch-action: none;
-  }
-
-  .steer-button:active {
-    border-color: #58f0d8;
-    background: rgba(14, 37, 37, .98);
-    transform: scale(.97);
-  }
-
-  .steer-up { left: 49px; top: 0; }
-  .steer-left { left: 0; top: 49px; }
-  .steer-centre {
-    left: 49px;
-    top: 49px;
-    border-color: rgba(255, 64, 84, .55);
-    color: #ff6678;
-    font-size: 22px;
-  }
-  .steer-right { left: 98px; top: 49px; }
-  .steer-down { left: 49px; top: 98px; }
+  .route-choice > strong { font-size: 12px; }
+  .route-choice-buttons { grid-template-columns: repeat(3, 1fr); gap: 7px; }
+  .route-choice-button { min-width: 0; min-height: 62px; padding: 10px 8px; text-align: center; }
+  .route-choice-button strong { font-size: 12px; }
+  .route-choice-button small { font-size: 7px; }
 
   .mobile-controls {
     pointer-events: auto;
@@ -205,10 +212,7 @@ button, input { font: inherit; }
     font-size: 22px;
   }
 
-  .mobile-button-row .mobile-primary:active {
-    background: #75f7e3;
-  }
-
+  .mobile-button-row .mobile-primary:active { background: #75f7e3; }
   .mobile-reset { font-size: 22px !important; }
 }
 
@@ -216,10 +220,6 @@ button, input { font: inherit; }
   .title-panel span { display: none; }
   .stage-panel .eyebrow { display: none; }
   .mobile-button-row button { min-height: 58px; }
-  .mobile-steering {
-    width: 156px;
-    height: 172px;
-    transform: scale(.94);
-    transform-origin: bottom left;
-  }
+  .route-choice-buttons { gap: 5px; }
+  .route-choice-button { min-height: 66px; padding-inline: 5px; }
 }

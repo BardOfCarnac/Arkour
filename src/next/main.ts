@@ -24,25 +24,20 @@ app.innerHTML = `
       </section>
 
       <section class="panel note-panel">
-        <b>This is not the old Run shell.</b><br />
-        It uses the production route-first architecture pipeline with a new Three.js surface/descent presentation. All branches remain reserved even though this acceptance tour follows the default centre route.
+        <b>Camera path is deterministic.</b><br />
+        The presentation camera follows the tested clearance-safe path. Player input is reserved for traversal decisions such as route choice.
       </section>
 
-      <section class="controls desktop-controls" aria-label="Acceptance controls">
+      <section id="route-choice" class="route-choice panel" aria-live="polite" hidden>
+        <span class="eyebrow">JUNCTION</span>
+        <strong id="route-choice-title">CHOOSE ROUTE</strong>
+        <div id="route-choice-buttons" class="route-choice-buttons"></div>
+      </section>
+
+      <section class="controls desktop-controls" aria-label="Acceptance playback controls">
         <button id="play" type="button">Pause</button>
         <button id="reset" type="button">Reset</button>
         <input id="scrub" type="range" min="0" max="1" step="0.001" value="0" aria-label="Timeline" />
-      </section>
-
-      <section class="mobile-steering" aria-label="Mobile steering controls">
-        <span class="mobile-steering-label">STEER</span>
-        <div class="steer-grid">
-          <button id="steer-up" class="steer-button steer-up" type="button" aria-label="Steer up">▲</button>
-          <button id="steer-left" class="steer-button steer-left" type="button" aria-label="Steer left">◀</button>
-          <button id="steer-centre" class="steer-button steer-centre" type="button" aria-label="Recenter steering">◎</button>
-          <button id="steer-right" class="steer-button steer-right" type="button" aria-label="Steer right">▶</button>
-          <button id="steer-down" class="steer-button steer-down" type="button" aria-label="Steer down">▼</button>
-        </div>
       </section>
 
       <section class="mobile-controls" aria-label="Mobile playback controls">
@@ -81,6 +76,9 @@ const runtime = new NextAcceptanceRuntime(world, acceptanceArchitectureDocument,
   playButton,
   resetButton,
   scrub,
+  routeChoice: get('route-choice'),
+  routeChoiceTitle: get('route-choice-title'),
+  routeChoiceButtons: get('route-choice-buttons'),
 });
 
 const syncMobilePlay = (): void => {
@@ -93,8 +91,6 @@ const syncMobileScrub = (): void => {
 };
 
 const seekBySeconds = (seconds: number): void => {
-  // The current acceptance tour is 48 seconds long. Keeping this UI alias here
-  // avoids coupling the production runtime to mobile-only presentation controls.
   const next = Math.max(0, Math.min(1, Number(scrub.value) + seconds / 48));
   scrub.value = String(next);
   scrub.dispatchEvent(new Event('input', { bubbles: true }));
@@ -117,62 +113,6 @@ mobileScrub.addEventListener('input', () => {
   scrub.value = mobileScrub.value;
   scrub.dispatchEvent(new Event('input', { bubbles: true }));
   syncMobilePlay();
-});
-
-// The acceptance runtime already treats pointer position as steering/look input.
-// Mobile has no hover pointer, so the D-pad maintains a virtual pointer position
-// and feeds it through the exact same input path. Values are deliberately allowed
-// beyond the physical screen bounds to provide a useful steering range on a phone.
-const virtualSteer = { x: 0, y: 0 };
-const STEER_LIMIT = 4.0;
-const STEER_STEP = 0.22;
-
-const emitVirtualSteer = (): void => {
-  const width = Math.max(window.innerWidth, 1);
-  const height = Math.max(window.innerHeight, 1);
-  window.dispatchEvent(new PointerEvent('pointermove', {
-    clientX: width * (0.5 + virtualSteer.x / 2),
-    clientY: height * (0.5 - virtualSteer.y / 2),
-    pointerType: 'touch',
-  }));
-};
-
-const nudgeSteer = (dx: number, dy: number): void => {
-  virtualSteer.x = Math.max(-STEER_LIMIT, Math.min(STEER_LIMIT, virtualSteer.x + dx));
-  virtualSteer.y = Math.max(-STEER_LIMIT, Math.min(STEER_LIMIT, virtualSteer.y + dy));
-  emitVirtualSteer();
-};
-
-const bindSteerHold = (id: string, dx: number, dy: number): void => {
-  const button = get<HTMLButtonElement>(id);
-  let timer: number | null = null;
-
-  const step = (): void => nudgeSteer(dx * STEER_STEP, dy * STEER_STEP);
-  const stop = (): void => {
-    if (timer !== null) window.clearInterval(timer);
-    timer = null;
-  };
-
-  button.addEventListener('pointerdown', (event) => {
-    event.preventDefault();
-    button.setPointerCapture?.(event.pointerId);
-    step();
-    stop();
-    timer = window.setInterval(step, 55);
-  });
-  button.addEventListener('pointerup', stop);
-  button.addEventListener('pointercancel', stop);
-  button.addEventListener('lostpointercapture', stop);
-};
-
-bindSteerHold('steer-left', -1, 0);
-bindSteerHold('steer-right', 1, 0);
-bindSteerHold('steer-up', 0, 1);
-bindSteerHold('steer-down', 0, -1);
-get<HTMLButtonElement>('steer-centre').addEventListener('click', () => {
-  virtualSteer.x = 0;
-  virtualSteer.y = 0;
-  emitVirtualSteer();
 });
 
 new MutationObserver(syncMobilePlay).observe(playButton, { childList: true, characterData: true, subtree: true });

@@ -3,6 +3,7 @@ import type { RouteSpec, RunWorld, Vec3 } from '../run/types';
 import type { ArchitectureOptions } from './generate';
 import { generateNodeComponents } from './node-components';
 import { generateStructuralArchitecture } from './structural';
+import { generateVerticalCity } from './vertical-city';
 
 const NODE_STRUCTURE_CLEARANCE = 15;
 
@@ -48,11 +49,11 @@ function structuralPieceEntersNodeZone(piece: ScenePiece, world: RunWorld): bool
  * Production composition point for the reconciled Arkour architecture model.
  *
  * The route network remains the geometric authority in the runtime. Large node
- * components now get first claim on the non-route space around encounters, and
- * the older structural generator is demoted to connective tissue between those
- * components. Generic structural pieces that land inside a node neighbourhood
- * are removed before scene admission so the chassis does not punch through the
- * identity-defining machinery.
+ * components get first claim on the non-route space around encounters, the older
+ * structural generator supplies continuous connective machinery between them,
+ * and the vertical-city pass packs larger canyon/deck/utility districts into the
+ * remaining route-relative space. Every proposal still has to pass the runtime's
+ * all-route + camera keep-out admission rules before it enters the Three.js scene.
  */
 export function generateRouteFirstArchitecture(
   world: RunWorld,
@@ -60,10 +61,11 @@ export function generateRouteFirstArchitecture(
 ): ScenePlan {
   const structural = generateStructuralArchitecture(world, options);
   const nodes = generateNodeComponents(world);
+  const city = generateVerticalCity(world, options);
   const connectiveStructure = structural.pieces.filter((piece) => !structuralPieceEntersNodeZone(piece, world));
 
   return {
     ...structural,
-    pieces: [...nodes, ...connectiveStructure],
+    pieces: [...nodes, ...connectiveStructure, ...city],
   };
 }

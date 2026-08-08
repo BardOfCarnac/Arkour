@@ -63,23 +63,58 @@ const GLYPH_STRUCTURE_PAIRS = [
   ['neckR', 'flankR'],
 ];
 const GLYPH_SCALE = 0.0092;
-const GLYPH_PRESET_ID = 'runner-glyph-v2-candidate-a';
-let runnerGlyphDefinition = null;
+const GLYPH_BANK_ID = 'runner-pose-bank-v1';
+const ROUTE_RUN_SECONDS = 27;
+const DEMO_HEAD_FIRST_TARGETS = new Set(['hellhound', 'efreet']);
+const DEMO_DRAMATIC_LANDING_TARGETS = new Set(['hellhound', 'efreet']);
+let runnerPoseBank = null;
+let runnerGlyphSources = null;
+let runnerResolvedPoses = null;
+let finalLandingReachedAt = null;
 
-fetch('../runner-glyph/runner-glyph-v2-candidate-a.json')
-  .then((response) => {
-    if (!response.ok) throw new Error(`Runner glyph preset returned ${response.status}`);
-    return response.json();
-  })
-  .then((definition) => {
+async function loadRunnerPoseBank() {
+  const bankUrl = new URL('../runner-glyph/runner-pose-bank-v1.json', location.href);
+  const bankResponse = await fetch(bankUrl);
+  if (!bankResponse.ok) throw new Error(`Runner pose bank returned ${bankResponse.status}`);
+  const bank = await bankResponse.json();
+  if (bank?.format !== 'arkour-runner-pose-bank' || bank?.version !== 1 || !bank?.poses || !bank?.sources) {
+    throw new Error('Runner pose bank is not arkour-runner-pose-bank v1');
+  }
+
+  const loadedSources = await Promise.all(Object.entries(bank.sources).map(async ([sourceId, sourcePath]) => {
+    const sourceUrl = new URL(sourcePath, bankUrl);
+    const response = await fetch(sourceUrl);
+    if (!response.ok) throw new Error(`${sourceId} returned ${response.status}`);
+    const definition = await response.json();
     if (definition?.format !== 'arkour-runner-glyph' || definition?.version !== 2 || !definition?.poses) {
-      throw new Error('Runner glyph preset is not a v2 arkour-runner-glyph definition');
+      throw new Error(`${sourceId} is not an arkour-runner-glyph v2 definition`);
     }
-    runnerGlyphDefinition = definition;
-  })
-  .catch((error) => {
-    console.warn('Could not load Runner Glyph Candidate A; using the temporary humanoid fallback', error);
-  });
+    return [sourceId, definition];
+  }));
+
+  const sources = Object.fromEntries(loadedSources);
+  const resolved = {};
+  for (const [poseName, descriptor] of Object.entries(bank.poses)) {
+    const source = sources[descriptor.source];
+    const pose = source?.poses?.[descriptor.sourcePose];
+    if (!source || !pose) throw new Error(`Could not resolve pose ${poseName}`);
+    resolved[poseName] = {
+      pose,
+      curve: Number(source.curve) || 0,
+      orientation: descriptor.orientation,
+      source: descriptor.source,
+      sourcePose: descriptor.sourcePose,
+    };
+  }
+
+  runnerPoseBank = bank;
+  runnerGlyphSources = sources;
+  runnerResolvedPoses = resolved;
+}
+
+loadRunnerPoseBank().catch((error) => {
+  console.warn('Could not load Runner Pose Bank v1; using the temporary humanoid fallback', error);
+});
 
 const depthByFloor = { 1: -14, 2: -31, 3: -49, 4: -67, 5: -84, 6: -103 };
 const centralNodes = [
@@ -159,6 +194,25 @@ function runnerPhase(distance) {
   if (nearestDelta > 0 && absolute < 7.0) return { phase: 'APPROACHING', node: nearest.id, delta: nearestDelta };
   if (nearestDelta < 0 && absolute < 4.0) return { phase: 'DEPARTING', node: nearest.id, delta: nearestDelta };
   return { phase: 'FLYING', node: nearestDelta > 0 ? nearest.id : null, delta: nearestDelta };
+}
+
+function traversalLeg(distance) {
+  const clamped = clamp(distance, 0, totalRouteLength);
+  for (let index = 0; index < nodeDistances.length - 1; index += 1) {
+    const start = nodeDistances[index];
+    const end = nodeDistances[index + 1];
+    if (clamped <= end.distance + 1e-6 || index === nodeDistances.length - 2) {
+      return {
+        index,
+        start,
+        end,
+        length: end.distance - start.distance,
+        elapsed: Math.max(0, clamped - start.distance),
+        remaining: Math.max(0, end.distance - clamped),
+      };
+    }
+  }
+  return null;
 }
 
 const blocks = [];
@@ -307,39 +361,175 @@ function blendGlyphPose(a, b, t) {
   return pose;
 }
 
-function runnerGlyphPose(status) {
-  if (!runnerGlyphDefinition) return null;
-  const { flying, upright, landing } = runnerGlyphDefinition.poses;
-  const delta = status.delta;
+function transitionById(id) {
+  return runnerPoseBank?.transitions?.find((transition) => transition.id === id) ?? null;
+}
 
-  if (!Number.isFinite(delta) || delta >= 7 || delta <= -4) {
-    return { pose: flying, label: 'FLYING', weights: { flying: 1, landing: 0, upright: 0 } };
-  }
+function transitionDistance(id, fallbackMs) {
+  const durationMs = Number(transitionById(id)?.durationMs ?? fallbackMs);
+  return totalRouteLength * (durationMs / (ROUTE_RUN_SECONDS * 1000));
+}
 
-  if (delta >= 0) {
-    const landingWeight = ease((7 - delta) / 7);
-    return {
-      pose: blendGlyphPose(flying, landing, landingWeight),
-      label: landingWeight > 0.82 ? 'LANDING' : 'FLYING→LANDING',
-      weights: { flying: 1 - landingWeight, landing: landingWeight, upright: 0 },
-    };
-  }
-
-  if (delta > -0.8) {
-    const uprightWeight = ease((-delta) / 0.8);
-    return {
-      pose: blendGlyphPose(landing, upright, uprightWeight),
-      label: uprightWeight > 0.82 ? 'UPRIGHT' : 'LANDING→UPRIGHT',
-      weights: { flying: 0, landing: 1 - uprightWeight, upright: uprightWeight },
-    };
-  }
-
-  const flyingWeight = ease(((-delta) - 0.8) / 3.2);
+function poseState(name, options = {}) {
+  const resolved = runnerResolvedPoses?.[name];
+  if (!resolved) return null;
+  const orientationDegrees = options.orientationDegrees ?? (resolved.orientation === 'head-first' ? 180 : 0);
   return {
-    pose: blendGlyphPose(upright, flying, flyingWeight),
-    label: flyingWeight > 0.82 ? 'FLYING' : 'UPRIGHT→FLYING',
-    weights: { flying: flyingWeight, landing: 0, upright: 1 - flyingWeight },
+    pose: resolved.pose,
+    curve: resolved.curve,
+    label: options.label ?? name.toUpperCase(),
+    primaryPose: name,
+    transition: options.transition ?? null,
+    orientationDegrees,
+    weights: { [name]: 1 },
   };
+}
+
+function blendPoseState(fromName, toName, t, options = {}) {
+  const from = runnerResolvedPoses?.[fromName];
+  const to = runnerResolvedPoses?.[toName];
+  if (!from || !to) return null;
+  const u = ease(t);
+  const fromAngle = options.fromAngle ?? (from.orientation === 'head-first' ? 180 : 0);
+  const toAngle = options.toAngle ?? (to.orientation === 'head-first' ? 180 : 0);
+  return {
+    pose: blendGlyphPose(from.pose, to.pose, t),
+    curve: from.curve + (to.curve - from.curve) * u,
+    label: options.label ?? `${fromName.toUpperCase()}→${toName.toUpperCase()}`,
+    primaryPose: u < 0.5 ? fromName : toName,
+    transition: options.transition ?? null,
+    orientationDegrees: fromAngle + (toAngle - fromAngle) * u,
+    weights: { [fromName]: 1 - u, [toName]: u },
+  };
+}
+
+function postLandingState(nodeId, elapsedDistance) {
+  if (!nodeId || nodeId === 'entry') return null;
+  const dramatic = DEMO_DRAMATIC_LANDING_TARGETS.has(nodeId);
+  const absorbDistance = transitionDistance('impact_absorb', 120);
+  const settleDistance = transitionDistance('settle_to_neutral', 240);
+
+  if (dramatic) {
+    if (elapsedDistance < absorbDistance) {
+      return blendPoseState('landing_impact', 'landing_recovery', elapsedDistance / absorbDistance, {
+        transition: 'impact_absorb',
+        label: 'IMPACT→RECOVERY',
+      });
+    }
+    if (elapsedDistance < absorbDistance + settleDistance) {
+      return blendPoseState('landing_recovery', 'neutral_base', (elapsedDistance - absorbDistance) / settleDistance, {
+        transition: 'settle_to_neutral',
+        label: 'RECOVERY→NEUTRAL',
+      });
+    }
+    return null;
+  }
+
+  if (elapsedDistance < settleDistance) {
+    return blendPoseState('landing_recovery', 'neutral_base', elapsedDistance / settleDistance, {
+      transition: 'settle_to_neutral',
+      label: 'RECOVERY→NEUTRAL',
+    });
+  }
+  return null;
+}
+
+function postLandingDistance(nodeId) {
+  if (!nodeId || nodeId === 'entry') return 0;
+  const settleDistance = transitionDistance('settle_to_neutral', 240);
+  if (!DEMO_DRAMATIC_LANDING_TARGETS.has(nodeId)) return settleDistance;
+  return transitionDistance('impact_absorb', 120) + settleDistance;
+}
+
+function runnerGlyphPose(distance, progress, now = performance.now()) {
+  if (!runnerPoseBank || !runnerResolvedPoses) return null;
+
+  if (progress >= 0.999999) {
+    if (finalLandingReachedAt === null) finalLandingReachedAt = now;
+    const elapsedMs = Math.max(0, now - finalLandingReachedAt);
+    const absorbMs = Number(transitionById('impact_absorb')?.durationMs ?? 120);
+    const settleMs = Number(transitionById('settle_to_neutral')?.durationMs ?? 240);
+    if (elapsedMs < absorbMs) {
+      return blendPoseState('landing_impact', 'landing_recovery', elapsedMs / absorbMs, {
+        transition: 'impact_absorb',
+        label: 'IMPACT→RECOVERY',
+      });
+    }
+    if (elapsedMs < absorbMs + settleMs) {
+      return blendPoseState('landing_recovery', 'neutral_base', (elapsedMs - absorbMs) / settleMs, {
+        transition: 'settle_to_neutral',
+        label: 'RECOVERY→NEUTRAL',
+      });
+    }
+    return poseState('neutral_base', { label: 'NEUTRAL BASE' });
+  }
+  finalLandingReachedAt = null;
+
+  const leg = traversalLeg(distance);
+  if (!leg) return poseState('neutral_base', { label: 'NEUTRAL BASE' });
+
+  const postState = postLandingState(leg.start.id, leg.elapsed);
+  if (postState) return postState;
+
+  const departureStart = postLandingDistance(leg.start.id);
+  const neutralVariationDistance = transitionDistance('neutral_variation', 520);
+  const departDistance = transitionDistance('depart_default', 300);
+  const departureElapsed = Math.max(0, leg.elapsed - departureStart);
+
+  if (departureElapsed < neutralVariationDistance) {
+    return blendPoseState('neutral_base', 'neutral_fall', departureElapsed / neutralVariationDistance, {
+      transition: 'neutral_variation',
+      label: 'NEUTRAL→FALL',
+    });
+  }
+  if (departureElapsed < neutralVariationDistance + departDistance) {
+    return blendPoseState('neutral_fall', 'travel_feet_first', (departureElapsed - neutralVariationDistance) / departDistance, {
+      transition: 'depart_default',
+      label: 'FALL→FEET-FIRST',
+    });
+  }
+
+  const dramatic = DEMO_DRAMATIC_LANDING_TARGETS.has(leg.end.id);
+  const landingTransition = dramatic ? 'land_dramatic' : 'land_standard';
+  const landingDistance = transitionDistance(landingTransition, dramatic ? 80 : 160);
+  const headFirst = DEMO_HEAD_FIRST_TARGETS.has(leg.end.id);
+  const flipDistance = transitionDistance('enter_head_first', 420);
+
+  if (leg.remaining <= landingDistance) {
+    const targetPose = dramatic ? 'landing_impact' : 'landing_recovery';
+    return blendPoseState('travel_feet_first', targetPose, (landingDistance - leg.remaining) / landingDistance, {
+      transition: landingTransition,
+      label: dramatic ? 'FEET-FIRST→IMPACT' : 'FEET-FIRST→RECOVERY',
+      fromAngle: 0,
+      toAngle: 0,
+    });
+  }
+
+  if (headFirst && leg.remaining <= landingDistance + flipDistance) {
+    const t = (landingDistance + flipDistance - leg.remaining) / flipDistance;
+    return blendPoseState('travel_head_first', 'travel_feet_first', t, {
+      transition: 'exit_head_first',
+      label: 'FLIP→FEET-FIRST',
+      fromAngle: 180,
+      toAngle: 360,
+    });
+  }
+
+  if (headFirst) {
+    const enterFlipStart = departureStart + neutralVariationDistance + departDistance;
+    const enterFlipElapsed = Math.max(0, leg.elapsed - enterFlipStart);
+    if (enterFlipElapsed < flipDistance) {
+      return blendPoseState('travel_feet_first', 'travel_head_first', enterFlipElapsed / flipDistance, {
+        transition: 'enter_head_first',
+        label: 'FLIP→HEAD-FIRST',
+        fromAngle: 0,
+        toAngle: 180,
+      });
+    }
+    return poseState('travel_head_first', { label: 'HEAD-FIRST DIVE', orientationDegrees: 180 });
+  }
+
+  return poseState('travel_feet_first', { label: 'FEET-FIRST FALL' });
 }
 
 function smoothGlyphContour(pose, curve, stepsPerSegment = 5) {
@@ -375,14 +565,26 @@ function smoothGlyphContour(pose, curve, stepsPerSegment = 5) {
   return points;
 }
 
-function glyphPointToWorld(local, runner, basis) {
+function rotateGlyphLocal(local, degrees) {
+  const radians = (degrees * Math.PI) / 180;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  return {
+    x: local.x,
+    y: local.y * cosine - local.z * sine,
+    z: local.y * sine + local.z * cosine,
+  };
+}
+
+function glyphPointToWorld(local, runner, basis, orientationDegrees = 0) {
+  const rotated = rotateGlyphLocal(local, orientationDegrees);
   return add(
     runner.position,
     add(
-      mul(basis.right, local.x * GLYPH_SCALE),
+      mul(basis.right, rotated.x * GLYPH_SCALE),
       add(
-        mul(runner.forward, local.y * GLYPH_SCALE),
-        mul(basis.front, local.z * GLYPH_SCALE),
+        mul(runner.forward, rotated.y * GLYPH_SCALE),
+        mul(basis.front, rotated.z * GLYPH_SCALE),
       ),
     ),
   );
@@ -391,8 +593,8 @@ function glyphPointToWorld(local, runner, basis) {
 function drawGlyphRunner(runner, glyphState, phase) {
   const basis = runnerBasis(runner.forward);
   const pose = glyphState.pose;
-  const contour = smoothGlyphContour(pose, runnerGlyphDefinition.curve)
-    .map((point) => glyphPointToWorld(point, runner, basis));
+  const contour = smoothGlyphContour(pose, glyphState.curve)
+    .map((point) => glyphPointToWorld(point, runner, basis, glyphState.orientationDegrees));
 
   face3(contour, COLORS.runnerFill, COLORS.runnerGlow, 0.92, 0.8);
 
@@ -403,8 +605,8 @@ function drawGlyphRunner(runner, glyphState, phase) {
   }
 
   for (const [aKey, bKey] of GLYPH_STRUCTURE_PAIRS) {
-    const a = glyphPointToWorld(pose[aKey], runner, basis);
-    const b = glyphPointToWorld(pose[bKey], runner, basis);
+    const a = glyphPointToWorld(pose[aKey], runner, basis, glyphState.orientationDegrees);
+    const b = glyphPointToWorld(pose[bKey], runner, basis, glyphState.orientationDegrees);
     line3(a, b, COLORS.runnerStructure, 0.9, 0.82);
   }
 }
@@ -440,7 +642,7 @@ function drawFallbackRunner(runner, phase) {
 }
 
 function drawRunner(runner, status, glyphState) {
-  if (glyphState && runnerGlyphDefinition) drawGlyphRunner(runner, glyphState, status.phase);
+  if (glyphState && runnerResolvedPoses) drawGlyphRunner(runner, glyphState, status.phase);
   else drawFallbackRunner(runner, status.phase);
 }
 
@@ -508,11 +710,12 @@ addEventListener('keydown', (event) => {
   if (event.key.toLowerCase() === 'v') viewButton.click();
 });
 
-function frame() {
+function frame(now = performance.now()) {
   const progress = clamp(Number(scrubInput.value) || 0, 0, 1);
   const runner = sampleRunnerPath(progress);
   const status = runnerPhase(runner.distance);
-  const glyphState = runnerGlyphPose(status);
+  const glyphState = runnerGlyphPose(runner.distance, progress, now);
+  const leg = traversalLeg(runner.distance);
 
   window.ArkourRunSnapshot = {
     version: 1,
@@ -525,10 +728,19 @@ function frame() {
       position: { ...runner.position },
       forward: { ...runner.forward },
       glyph: glyphState ? {
-        preset: GLYPH_PRESET_ID,
-        pose: glyphState.label,
+        bank: GLYPH_BANK_ID,
+        pose: glyphState.primaryPose,
+        presentation: glyphState.label,
+        transition: glyphState.transition,
         weights: { ...glyphState.weights },
+        orientationDegrees: glyphState.orientationDegrees,
+        curve: glyphState.curve,
         axes: { x: 'body-right', y: 'head-to-foot/travel', z: 'body-front' },
+        demoSelection: leg ? {
+          targetNode: leg.end.id,
+          headFirst: DEMO_HEAD_FIRST_TARGETS.has(leg.end.id),
+          dramaticLanding: DEMO_DRAMATIC_LANDING_TARGETS.has(leg.end.id),
+        } : null,
       } : null,
     },
   };

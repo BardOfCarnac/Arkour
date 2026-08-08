@@ -30,6 +30,10 @@ const lerp = (a, b, t) => V(
   a.z + (b.z - a.z) * t,
 );
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+const ease = (t) => {
+  const u = clamp(t, 0, 1);
+  return u * u * (3 - 2 * u);
+};
 
 const COLORS = {
   background: '#030506',
@@ -37,6 +41,8 @@ const COLORS = {
   routeDim: 'rgba(255,61,82,.34)',
   runner: '#eafffb',
   runnerGlow: 'rgba(85,241,220,.46)',
+  runnerFill: 'rgba(85,241,220,.13)',
+  runnerStructure: 'rgba(85,241,220,.27)',
   edge: 'rgba(85,241,220,.58)',
   edgeDim: 'rgba(85,241,220,.24)',
   danger: 'rgba(255,61,82,.65)',
@@ -44,6 +50,36 @@ const COLORS = {
   dangerFace: 'rgba(16,5,8,.985)',
   grid: 'rgba(112,145,142,.18)',
 };
+
+const GLYPH_POINT_ORDER = [
+  'head', 'neckR', 'handR', 'underarmR', 'flankR',
+  'foot', 'flankL', 'underarmL', 'handL', 'neckL',
+];
+const GLYPH_STRUCTURE_PAIRS = [
+  ['head', 'foot'],
+  ['handL', 'handR'],
+  ['underarmL', 'underarmR'],
+  ['neckL', 'flankL'],
+  ['neckR', 'flankR'],
+];
+const GLYPH_SCALE = 0.0092;
+const GLYPH_PRESET_ID = 'runner-glyph-v2-candidate-a';
+let runnerGlyphDefinition = null;
+
+fetch('../runner-glyph/runner-glyph-v2-candidate-a.json')
+  .then((response) => {
+    if (!response.ok) throw new Error(`Runner glyph preset returned ${response.status}`);
+    return response.json();
+  })
+  .then((definition) => {
+    if (definition?.format !== 'arkour-runner-glyph' || definition?.version !== 2 || !definition?.poses) {
+      throw new Error('Runner glyph preset is not a v2 arkour-runner-glyph definition');
+    }
+    runnerGlyphDefinition = definition;
+  })
+  .catch((error) => {
+    console.warn('Could not load Runner Glyph Candidate A; using the temporary humanoid fallback', error);
+  });
 
 const depthByFloor = { 1: -14, 2: -31, 3: -49, 4: -67, 5: -84, 6: -103 };
 const centralNodes = [
@@ -116,13 +152,13 @@ function runnerPhase(distance) {
     }
   }
 
-  if (!nearest) return { phase: 'FLYING', node: null };
+  if (!nearest) return { phase: 'FLYING', node: null, delta: Number.POSITIVE_INFINITY };
   const absolute = Math.abs(nearestDelta);
-  if (absolute < 0.65) return { phase: 'STATIONARY', node: nearest.id };
-  if (nearestDelta > 0 && absolute < 2.1) return { phase: 'ARRIVING', node: nearest.id };
-  if (nearestDelta > 0 && absolute < 7.0) return { phase: 'APPROACHING', node: nearest.id };
-  if (nearestDelta < 0 && absolute < 4.0) return { phase: 'DEPARTING', node: nearest.id };
-  return { phase: 'FLYING', node: nearestDelta > 0 ? nearest.id : null };
+  if (absolute < 0.65) return { phase: 'STATIONARY', node: nearest.id, delta: nearestDelta };
+  if (nearestDelta > 0 && absolute < 2.1) return { phase: 'ARRIVING', node: nearest.id, delta: nearestDelta };
+  if (nearestDelta > 0 && absolute < 7.0) return { phase: 'APPROACHING', node: nearest.id, delta: nearestDelta };
+  if (nearestDelta < 0 && absolute < 4.0) return { phase: 'DEPARTING', node: nearest.id, delta: nearestDelta };
+  return { phase: 'FLYING', node: nearestDelta > 0 ? nearest.id : null, delta: nearestDelta };
 }
 
 const blocks = [];
@@ -206,7 +242,7 @@ function line3(a, b, color, lineWidth = 1, alpha = 1) {
   if (!pa || !pb) return;
   commands.push({ type: 'line', pa, pb, color, lineWidth, alpha, depth: (pa.z + pb.z) / 2 });
 }
-function face3(points, fill, stroke, alpha = 1) {
+function face3(points, fill, stroke, alpha = 1, lineWidth = 0.5) {
   const projected = points.map(project);
   if (projected.some((point) => !point)) return;
   commands.push({
@@ -214,6 +250,7 @@ function face3(points, fill, stroke, alpha = 1) {
     points: projected,
     fill,
     stroke,
+    lineWidth,
     alpha,
     depth: projected.reduce((sum, point) => sum + point.z, 0) / projected.length,
   });
@@ -253,17 +290,132 @@ function runnerBasis(forward) {
   let right = cross(forward, V(0, 0, 1));
   if (magnitude(right) < 0.05) right = cross(forward, V(1, 0, 0));
   right = normal(right);
-  const up = normal(cross(right, forward));
-  return { right, up };
+  const front = normal(cross(right, forward));
+  return { right, front };
 }
 
-function drawRunner(runner, phase) {
-  const { right, up } = runnerBasis(runner.forward);
+function blendGlyphPose(a, b, t) {
+  const u = ease(t);
+  const pose = {};
+  for (const key of GLYPH_POINT_ORDER) {
+    pose[key] = {
+      x: a[key].x + (b[key].x - a[key].x) * u,
+      y: a[key].y + (b[key].y - a[key].y) * u,
+      z: a[key].z + (b[key].z - a[key].z) * u,
+    };
+  }
+  return pose;
+}
+
+function runnerGlyphPose(status) {
+  if (!runnerGlyphDefinition) return null;
+  const { flying, upright, landing } = runnerGlyphDefinition.poses;
+  const delta = status.delta;
+
+  if (!Number.isFinite(delta) || delta >= 7 || delta <= -4) {
+    return { pose: flying, label: 'FLYING', weights: { flying: 1, landing: 0, upright: 0 } };
+  }
+
+  if (delta >= 0) {
+    const landingWeight = ease((7 - delta) / 7);
+    return {
+      pose: blendGlyphPose(flying, landing, landingWeight),
+      label: landingWeight > 0.82 ? 'LANDING' : 'FLYING→LANDING',
+      weights: { flying: 1 - landingWeight, landing: landingWeight, upright: 0 },
+    };
+  }
+
+  if (delta > -0.8) {
+    const uprightWeight = ease((-delta) / 0.8);
+    return {
+      pose: blendGlyphPose(landing, upright, uprightWeight),
+      label: uprightWeight > 0.82 ? 'UPRIGHT' : 'LANDING→UPRIGHT',
+      weights: { flying: 0, landing: 1 - uprightWeight, upright: uprightWeight },
+    };
+  }
+
+  const flyingWeight = ease(((-delta) - 0.8) / 3.2);
+  return {
+    pose: blendGlyphPose(upright, flying, flyingWeight),
+    label: flyingWeight > 0.82 ? 'FLYING' : 'UPRIGHT→FLYING',
+    weights: { flying: flyingWeight, landing: 0, upright: 1 - flyingWeight },
+  };
+}
+
+function smoothGlyphContour(pose, curve, stepsPerSegment = 5) {
+  const anchors = GLYPH_POINT_ORDER.map((key) => pose[key]);
+  const points = [];
+  const tension = clamp(curve, 0, 1);
+  const count = anchors.length;
+  for (let index = 0; index < count; index += 1) {
+    const p0 = anchors[(index - 1 + count) % count];
+    const p1 = anchors[index];
+    const p2 = anchors[(index + 1) % count];
+    const p3 = anchors[(index + 2) % count];
+    const c1 = {
+      x: p1.x + ((p2.x - p0.x) * tension) / 6,
+      y: p1.y + ((p2.y - p0.y) * tension) / 6,
+      z: p1.z + ((p2.z - p0.z) * tension) / 6,
+    };
+    const c2 = {
+      x: p2.x - ((p3.x - p1.x) * tension) / 6,
+      y: p2.y - ((p3.y - p1.y) * tension) / 6,
+      z: p2.z - ((p3.z - p1.z) * tension) / 6,
+    };
+    for (let step = 0; step < stepsPerSegment; step += 1) {
+      const u = step / stepsPerSegment;
+      const om = 1 - u;
+      points.push({
+        x: p1.x * om * om * om + c1.x * 3 * om * om * u + c2.x * 3 * om * u * u + p2.x * u * u * u,
+        y: p1.y * om * om * om + c1.y * 3 * om * om * u + c2.y * 3 * om * u * u + p2.y * u * u * u,
+        z: p1.z * om * om * om + c1.z * 3 * om * om * u + c2.z * 3 * om * u * u + p2.z * u * u * u,
+      });
+    }
+  }
+  return points;
+}
+
+function glyphPointToWorld(local, runner, basis) {
+  return add(
+    runner.position,
+    add(
+      mul(basis.right, local.x * GLYPH_SCALE),
+      add(
+        mul(runner.forward, local.y * GLYPH_SCALE),
+        mul(basis.front, local.z * GLYPH_SCALE),
+      ),
+    ),
+  );
+}
+
+function drawGlyphRunner(runner, glyphState, phase) {
+  const basis = runnerBasis(runner.forward);
+  const pose = glyphState.pose;
+  const contour = smoothGlyphContour(pose, runnerGlyphDefinition.curve)
+    .map((point) => glyphPointToWorld(point, runner, basis));
+
+  face3(contour, COLORS.runnerFill, COLORS.runnerGlow, 0.92, 0.8);
+
+  for (let index = 0; index < contour.length; index += 1) {
+    const next = (index + 1) % contour.length;
+    line3(contour[index], contour[next], COLORS.runnerGlow, phase === 'STATIONARY' ? 5.2 : 4.2, 0.28);
+    line3(contour[index], contour[next], COLORS.runner, 1.45, 0.99);
+  }
+
+  for (const [aKey, bKey] of GLYPH_STRUCTURE_PAIRS) {
+    const a = glyphPointToWorld(pose[aKey], runner, basis);
+    const b = glyphPointToWorld(pose[bKey], runner, basis);
+    line3(a, b, COLORS.runnerStructure, 0.9, 0.82);
+  }
+}
+
+function drawFallbackRunner(runner, phase) {
+  const { right, front } = runnerBasis(runner.forward);
   const p = runner.position;
   const arriving = phase === 'ARRIVING' || phase === 'STATIONARY';
   const bodyForward = arriving ? mul(runner.forward, 0.72) : runner.forward;
 
-  const head = add(add(p, mul(bodyForward, 0.58)), mul(up, arriving ? 0.22 : 0));
+  const head = add(add(p, mul(bodyForward, 0.58)), mul(front, arriving ? 0.22 : 0));
   const neck = add(p, mul(bodyForward, 0.22));
   const hips = add(p, mul(bodyForward, -0.72));
   const leftShoulder = add(neck, mul(right, -0.46));
@@ -285,11 +437,11 @@ function drawRunner(runner, phase) {
   ];
   for (const [a, b] of bones) line3(a, b, COLORS.runnerGlow, glowWidth, 0.36);
   for (const [a, b] of bones) line3(a, b, COLORS.runner, 1.35, 0.98);
+}
 
-  const q = project(head);
-  if (q) {
-    commands.push({ type: 'head', q, depth: q.z, radius: clamp(q.scale * 0.12, 2.2, 7) });
-  }
+function drawRunner(runner, status, glyphState) {
+  if (glyphState && runnerGlyphDefinition) drawGlyphRunner(runner, glyphState, status.phase);
+  else drawFallbackRunner(runner, status.phase);
 }
 
 function renderCommands() {
@@ -300,7 +452,7 @@ function renderCommands() {
       ctx.globalAlpha = command.alpha;
       ctx.fillStyle = command.fill;
       ctx.strokeStyle = command.stroke;
-      ctx.lineWidth = 0.5;
+      ctx.lineWidth = command.lineWidth ?? 0.5;
       ctx.beginPath();
       ctx.moveTo(command.points[0].x, command.points[0].y);
       for (let index = 1; index < command.points.length; index += 1) {
@@ -318,16 +470,6 @@ function renderCommands() {
       ctx.beginPath();
       ctx.moveTo(command.pa.x, command.pa.y);
       ctx.lineTo(command.pb.x, command.pb.y);
-      ctx.stroke();
-      ctx.restore();
-    } else if (command.type === 'head') {
-      ctx.save();
-      ctx.strokeStyle = COLORS.runner;
-      ctx.fillStyle = 'rgba(85,241,220,.16)';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.arc(command.q.x, command.q.y, command.radius, 0, Math.PI * 2);
-      ctx.fill();
       ctx.stroke();
       ctx.restore();
     }
@@ -370,6 +512,7 @@ function frame() {
   const progress = clamp(Number(scrubInput.value) || 0, 0, 1);
   const runner = sampleRunnerPath(progress);
   const status = runnerPhase(runner.distance);
+  const glyphState = runnerGlyphPose(status);
 
   window.ArkourRunSnapshot = {
     version: 1,
@@ -381,10 +524,20 @@ function frame() {
     runner: {
       position: { ...runner.position },
       forward: { ...runner.forward },
+      glyph: glyphState ? {
+        preset: GLYPH_PRESET_ID,
+        pose: glyphState.label,
+        weights: { ...glyphState.weights },
+        axes: { x: 'body-right', y: 'head-to-foot/travel', z: 'body-front' },
+      } : null,
     },
   };
 
-  if (runnerPhaseEl) runnerPhaseEl.textContent = `RUNNER: ${status.phase}`;
+  if (runnerPhaseEl) {
+    runnerPhaseEl.textContent = glyphState
+      ? `RUNNER: ${status.phase} · ${glyphState.label}`
+      : `RUNNER: ${status.phase}`;
+  }
 
   if (viewMode === 'spectator') {
     updateSpectatorCamera(runner, progress);
@@ -402,7 +555,7 @@ function frame() {
     drawGround();
     for (const block of blocks) drawBlock(block);
     drawRoute();
-    drawRunner(runner, status.phase);
+    drawRunner(runner, status, glyphState);
     renderCommands();
     drawVignette();
   }

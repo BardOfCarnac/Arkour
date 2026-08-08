@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RUN_CAMERA_PROFILE } from './camera-profile';
 import type { RuntimeRoute } from './route';
 import { createRouteFrame, sampleRouteFrameAtDistance } from './route-frame';
 import type {
@@ -18,6 +19,10 @@ import type {
 import type { Vec3 } from './types';
 
 const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
+const UNIT_BOX_BOUNDS = new THREE.Box3(
+  new THREE.Vector3(-0.5, -0.5, -0.5),
+  new THREE.Vector3(0.5, 0.5, 0.5),
+);
 
 interface Palette {
   dark: THREE.MeshStandardMaterial;
@@ -28,6 +33,11 @@ interface Palette {
 interface Pose {
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
+}
+
+interface CameraCorridor {
+  points: readonly THREE.Vector3[];
+  clearance: number;
 }
 
 function createPalette(): Palette {
@@ -82,18 +92,61 @@ function applyPose(object: THREE.Object3D, pose: Pose): void {
   object.quaternion.copy(pose.quaternion);
 }
 
+function createCameraCorridor(routes: Map<string, RuntimeRoute>): CameraCorridor {
+  const points: THREE.Vector3[] = [];
+  const frame = createRouteFrame();
+
+  for (const route of routes.values()) {
+    const samples = Math.max(2, Math.ceil(route.length / RUN_CAMERA_PROFILE.corridorSampleStep));
+    for (let index = 0; index <= samples; index += 1) {
+      const distance = route.length * (index / samples);
+      sampleRouteFrameAtDistance(route, distance, frame);
+      points.push(
+        frame.position.clone()
+          .addScaledVector(frame.forward, -RUN_CAMERA_PROFILE.trailDistance)
+          .addScaledVector(frame.up, RUN_CAMERA_PROFILE.upOffset),
+      );
+    }
+  }
+
+  return {
+    points,
+    clearance: RUN_CAMERA_PROFILE.sceneryClearance
+      + Math.hypot(RUN_CAMERA_PROFILE.holdRightAmplitude, RUN_CAMERA_PROFILE.holdUpAmplitude),
+  };
+}
+
+function boxIntersectsCorridor(box: THREE.Box3, corridor: CameraCorridor): boolean {
+  for (const point of corridor.points) {
+    if (box.distanceToPoint(point) < corridor.clearance) return true;
+  }
+  return false;
+}
+
+function objectIntersectsCorridor(object: THREE.Object3D, corridor: CameraCorridor): boolean {
+  object.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(object);
+  return boxIntersectsCorridor(box, corridor);
+}
+
 function addBox(
   parent: THREE.Object3D,
   size: Vec3,
   material: THREE.Material,
+  corridor: CameraCorridor,
   position: Vec3 = [0, 0, 0],
   rotation: Vec3 = [0, 0, 0],
-): THREE.Mesh {
+): THREE.Mesh | null {
   const mesh = new THREE.Mesh(UNIT_BOX, material);
   mesh.position.set(position[0], position[1], position[2]);
   mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
   mesh.scale.set(size[0], size[1], size[2]);
   parent.add(mesh);
+
+  if (objectIntersectsCorridor(mesh, corridor)) {
+    parent.remove(mesh);
+    return null;
+  }
   return mesh;
 }
 
@@ -102,6 +155,7 @@ function addAperture(
   routes: Map<string, RuntimeRoute>,
   piece: AperturePiece,
   palette: Palette,
+  corridor: CameraCorridor,
 ): void {
   const group = new THREE.Group();
   applyPose(group, poseFor(routes, piece.anchor, piece.rotation));
@@ -110,10 +164,10 @@ function addAperture(
   const outerWidth = openingWidth + piece.member * 2;
   const outerHeight = openingHeight + piece.member * 2;
 
-  addBox(group, [piece.member, outerHeight, piece.depth], material, [-(openingWidth + piece.member) / 2, 0, 0]);
-  addBox(group, [piece.member, outerHeight, piece.depth], material, [(openingWidth + piece.member) / 2, 0, 0]);
-  addBox(group, [outerWidth, piece.member, piece.depth], material, [0, (openingHeight + piece.member) / 2, 0]);
-  addBox(group, [outerWidth, piece.member, piece.depth], material, [0, -(openingHeight + piece.member) / 2, 0]);
+  addBox(group, [piece.member, outerHeight, piece.depth], material, corridor, [-(openingWidth + piece.member) / 2, 0, 0]);
+  addBox(group, [piece.member, outerHeight, piece.depth], material, corridor, [(openingWidth + piece.member) / 2, 0, 0]);
+  addBox(group, [outerWidth, piece.member, piece.depth], material, corridor, [0, (openingHeight + piece.member) / 2, 0]);
+  addBox(group, [outerWidth, piece.member, piece.depth], material, corridor, [0, -(openingHeight + piece.member) / 2, 0]);
   scene.add(group);
 }
 
@@ -122,11 +176,12 @@ function addMassLike(
   routes: Map<string, RuntimeRoute>,
   piece: MassPiece | SpinePiece,
   palette: Palette,
+  corridor: CameraCorridor,
 ): void {
   const mesh = new THREE.Mesh(UNIT_BOX, materialFor(palette, piece.material));
   applyPose(mesh, poseFor(routes, piece.anchor, piece.rotation));
   mesh.scale.set(piece.size[0], piece.size[1], piece.size[2]);
-  scene.add(mesh);
+  if (!objectIntersectsCorridor(mesh, corridor)) scene.add(mesh);
 }
 
 function addOverpass(
@@ -134,11 +189,12 @@ function addOverpass(
   routes: Map<string, RuntimeRoute>,
   piece: OverpassPiece,
   palette: Palette,
+  corridor: CameraCorridor,
 ): void {
   const mesh = new THREE.Mesh(UNIT_BOX, materialFor(palette, piece.material));
   applyPose(mesh, poseFor(routes, piece.anchor, piece.rotation));
   mesh.scale.set(piece.width, piece.height, piece.depth);
-  scene.add(mesh);
+  if (!objectIntersectsCorridor(mesh, corridor)) scene.add(mesh);
 }
 
 function addCanyon(
@@ -146,6 +202,7 @@ function addCanyon(
   routes: Map<string, RuntimeRoute>,
   piece: CanyonPiece,
   palette: Palette,
+  corridor: CameraCorridor,
 ): void {
   const group = new THREE.Group();
   applyPose(group, poseFor(routes, piece.anchor, piece.rotation));
@@ -153,8 +210,8 @@ function addCanyon(
   const offset = piece.gap / 2 + piece.wallThickness / 2;
   const size: Vec3 = [piece.wallThickness, piece.height, piece.length];
 
-  addBox(group, size, material, [-offset, 0, 0]);
-  addBox(group, size, material, [offset, 0, 0]);
+  addBox(group, size, material, corridor, [-offset, 0, 0]);
+  addBox(group, size, material, corridor, [offset, 0, 0]);
   scene.add(group);
 }
 
@@ -178,15 +235,23 @@ function addField(
   routes: Map<string, RuntimeRoute>,
   piece: FieldPiece,
   palette: Palette,
+  corridor: CameraCorridor,
 ): void {
   const group = new THREE.Group();
   applyPose(group, poseFor(routes, piece.anchor, piece.rotation));
+  group.updateMatrixWorld(true);
 
   const mesh = new THREE.InstancedMesh(UNIT_BOX, materialFor(palette, piece.material), piece.count);
   const random = seededRandom(piece.seed);
   const instance = new THREE.Object3D();
+  const candidateBox = new THREE.Box3();
+  const worldMatrix = new THREE.Matrix4();
+  let accepted = 0;
+  let attempts = 0;
+  const maxAttempts = piece.count * 16;
 
-  for (let index = 0; index < piece.count; index += 1) {
+  while (accepted < piece.count && attempts < maxAttempts) {
+    attempts += 1;
     let x = randomBetween(random, -piece.spread[0] / 2, piece.spread[0] / 2);
     let y = randomBetween(random, -piece.spread[1] / 2, piece.spread[1] / 2);
     const z = randomBetween(random, -piece.spread[2] / 2, piece.spread[2] / 2);
@@ -208,9 +273,16 @@ function addField(
       randomBetween(random, piece.minSize[2], piece.maxSize[2]),
     );
     instance.updateMatrix();
-    mesh.setMatrixAt(index, instance.matrix);
+
+    worldMatrix.multiplyMatrices(group.matrixWorld, instance.matrix);
+    candidateBox.copy(UNIT_BOX_BOUNDS).applyMatrix4(worldMatrix);
+    if (boxIntersectsCorridor(candidateBox, corridor)) continue;
+
+    mesh.setMatrixAt(accepted, instance.matrix);
+    accepted += 1;
   }
 
+  mesh.count = accepted;
   mesh.instanceMatrix.needsUpdate = true;
   group.add(mesh);
   scene.add(group);
@@ -221,18 +293,19 @@ function addInterchange(
   routes: Map<string, RuntimeRoute>,
   piece: InterchangePiece,
   palette: Palette,
+  corridor: CameraCorridor,
 ): void {
   const group = new THREE.Group();
   applyPose(group, poseFor(routes, piece.anchor, piece.rotation));
   const material = materialFor(palette, piece.material);
 
-  addBox(group, [piece.span, 1.5, 3.2], material, [0, 7, -6], [0, 0.18, 0.08]);
-  addBox(group, [piece.span * 0.82, 1.3, 3], material, [1, -6, 5], [0, -0.28, -0.06]);
-  addBox(group, [piece.span * 0.68, 1.1, 2.6], material, [-2, 14, 13], [0.08, 0.46, 0.03]);
+  addBox(group, [piece.span, 1.5, 3.2], material, corridor, [0, 7, -6], [0, 0.18, 0.08]);
+  addBox(group, [piece.span * 0.82, 1.3, 3], material, corridor, [1, -6, 5], [0, -0.28, -0.06]);
+  addBox(group, [piece.span * 0.68, 1.1, 2.6], material, corridor, [-2, 14, 13], [0.08, 0.46, 0.03]);
 
   const supportY = -piece.supportHeight / 2 + 4;
-  addBox(group, [2.2, piece.supportHeight, 2.2], material, [-piece.span * 0.34, supportY, 0]);
-  addBox(group, [2.2, piece.supportHeight, 2.2], material, [piece.span * 0.34, supportY, 0]);
+  addBox(group, [2.2, piece.supportHeight, 2.2], material, corridor, [-piece.span * 0.34, supportY, 0]);
+  addBox(group, [2.2, piece.supportHeight, 2.2], material, corridor, [piece.span * 0.34, supportY, 0]);
   scene.add(group);
 }
 
@@ -241,6 +314,7 @@ function addDecorativeRoute(
   routes: Map<string, RuntimeRoute>,
   piece: DecorativeRoutePiece,
   palette: Palette,
+  corridor: CameraCorridor,
 ): void {
   const group = new THREE.Group();
   applyPose(group, poseFor(routes, piece.anchor, piece.rotation));
@@ -250,7 +324,7 @@ function addDecorativeRoute(
   const geometry = new THREE.TubeGeometry(curve, Math.max(24, points.length * 16), piece.radius, 6, false);
   const mesh = new THREE.Mesh(geometry, materialFor(palette, piece.material ?? 'ghost'));
   group.add(mesh);
-  scene.add(group);
+  if (!objectIntersectsCorridor(group, corridor)) scene.add(group);
 }
 
 function addPiece(
@@ -258,29 +332,30 @@ function addPiece(
   routes: Map<string, RuntimeRoute>,
   piece: ScenePiece,
   palette: Palette,
+  corridor: CameraCorridor,
 ): void {
   switch (piece.kind) {
     case 'aperture':
-      addAperture(scene, routes, piece, palette);
+      addAperture(scene, routes, piece, palette, corridor);
       break;
     case 'mass':
     case 'spine':
-      addMassLike(scene, routes, piece, palette);
+      addMassLike(scene, routes, piece, palette, corridor);
       break;
     case 'overpass':
-      addOverpass(scene, routes, piece, palette);
+      addOverpass(scene, routes, piece, palette, corridor);
       break;
     case 'canyon':
-      addCanyon(scene, routes, piece, palette);
+      addCanyon(scene, routes, piece, palette, corridor);
       break;
     case 'field':
-      addField(scene, routes, piece, palette);
+      addField(scene, routes, piece, palette, corridor);
       break;
     case 'interchange':
-      addInterchange(scene, routes, piece, palette);
+      addInterchange(scene, routes, piece, palette, corridor);
       break;
     case 'decorative-route':
-      addDecorativeRoute(scene, routes, piece, palette);
+      addDecorativeRoute(scene, routes, piece, palette, corridor);
       break;
   }
 }
@@ -291,6 +366,7 @@ export function addScenePlan(
   plan: ScenePlan,
 ): void {
   const palette = createPalette();
+  const corridor = createCameraCorridor(routes);
 
   if (plan.lighting) {
     const ambient = new THREE.HemisphereLight(
@@ -303,5 +379,5 @@ export function addScenePlan(
     scene.add(ambient, key);
   }
 
-  for (const piece of plan.pieces) addPiece(scene, routes, piece, palette);
+  for (const piece of plan.pieces) addPiece(scene, routes, piece, palette, corridor);
 }

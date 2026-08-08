@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { collectCameraObstacles } from './camera-obstacles';
 import { CameraRig } from './camera-rig';
 import { RunInput, type RunAction } from './input';
 import { RuntimeRoute } from './route';
@@ -26,7 +27,7 @@ export class RunRuntime {
   private readonly camera = new THREE.PerspectiveCamera(68, 1, 0.18, 600);
   private readonly routes = new Map<string, RuntimeRoute>();
   private readonly routeMeshes: Map<string, THREE.Mesh>;
-  private readonly cameraRig = new CameraRig();
+  private readonly cameraRig: CameraRig;
   private readonly input = new RunInput();
   private readonly clock = new THREE.Clock();
 
@@ -66,6 +67,7 @@ export class RunRuntime {
     this.elements.canvasHost.appendChild(this.renderer.domElement);
 
     addScenePlan(this.scene, this.routes, scenePlan);
+    this.cameraRig = new CameraRig(collectCameraObstacles(this.scene));
     addParticles(this.scene);
     this.routeMeshes = addRouteGeometry(this.scene, this.routes);
     this.highlightRoute(this.currentRoute.id);

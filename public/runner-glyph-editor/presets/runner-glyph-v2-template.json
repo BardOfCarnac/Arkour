@@ -1,0 +1,8 @@
+{
+  "format": "arkour-runner-glyph",
+  "version": 2,
+  "curve": 0.27,
+  "poses": {
+    "note": "Generated v2 exports retain the v1 point names and add z to every point. This template is documentation only; use the editor export for actual pose data."
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "format": "arkour-runner-pose-lab-manifest",
+  "version": 1,
+  "sources": {
+    "candidateA": "../runner-glyph/runner-glyph-v2-candidate-a.json",
+    "candidateB": "../runner-glyph/runner-glyph-v2-candidate-b.json",
+    "candidateC": "../runner-glyph/runner-glyph-v2-candidate-c.json"
+  },
+  "entries": [
+    { "id": "travel_head_first", "label": "HEAD-FIRST DIVE", "source": "candidateA", "sourcePose": "flying", "family": "travel", "status": "banked" },
+    { "id": "neutral_base", "label": "NEUTRAL BASE", "source": "candidateA", "sourcePose": "upright", "family": "neutral", "status": "banked" },
+    { "id": "landing_recovery", "label": "LANDING RECOVERY", "source": "candidateA", "sourcePose": "landing", "family": "landing", "status": "banked" },
+    { "id": "travel_feet_first", "label": "FEET-FIRST DIVE", "source": "candidateB", "sourcePose": "flying", "family": "travel", "status": "banked" },
+    { "id": "neutral_fall", "label": "NEUTRAL FALL", "source": "candidateB", "sourcePose": "upright", "family": "neutral", "status": "banked" },
+    { "id": "landing_impact", "label": "LANDING IMPACT", "source": "candidateB", "sourcePose": "landing", "family": "landing", "status": "banked" },
+    { "id": "rail_brace", "label": "RAIL / BRAKE BRACE", "source": "candidateC", "sourcePose": "flying", "family": "hold", "status": "experimental" },
+    { "id": "strike_extreme", "label": "STRIKE EXTREME", "source": "candidateC", "sourcePose": "upright", "family": "combat", "status": "experimental" },
+    { "id": "stride_a", "label": "STRIDE A", "source": "candidateC", "sourcePose": "landing", "family": "locomotion", "status": "experimental" },
+    { "id": "stride_b", "label": "STRIDE B · MIRROR", "source": "candidateC", "sourcePose": "landing", "family": "locomotion", "status": "derived", "derive": "mirror-x" }
+  ]
+}

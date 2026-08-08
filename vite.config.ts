@@ -1,12 +1,12 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  // Keep built asset URLs relative so both the Run page and nested acceptance
+  // Keep built asset URLs relative so the canonical Run and nested reference
   // pages work from GitHub Pages project paths as well as local/static hosting.
   base: './',
   build: {
     rollupOptions: {
-      input: ['index.html', 'next/index.html'],
+      input: ['index.html', 'next/index.html', 'legacy/index.html'],
     },
   },
 });

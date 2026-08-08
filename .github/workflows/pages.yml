@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/run-v0.1
+      - agent/structural-chassis
   workflow_dispatch:
 
 permissions:

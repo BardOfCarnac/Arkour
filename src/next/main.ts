@@ -2,6 +2,7 @@ import './styles.css';
 import { acceptanceArchitectureDocument } from '../architecture/document/acceptance';
 import { compileArchitectureDocument } from '../architecture/document/compile';
 import { NextAcceptanceRuntime } from './runtime';
+import { attachRunnerEntity } from './runner';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('Missing #app root');
@@ -12,12 +13,12 @@ app.innerHTML = `
 
     <div class="hud">
       <section class="panel title-panel">
-        <strong>ARKOUR // NEXT ACCEPTANCE</strong>
+        <strong>ARKOUR // RUN</strong>
         <span>ArchitectureDocument → routes → node machines → chassis → vertical city</span>
       </section>
 
       <section class="panel stage-panel">
-        <span class="eyebrow">ROUTE-FIRST PRESENTATION</span>
+        <span class="eyebrow">ROUTE-FIRST RUN</span>
         <strong id="stage">SURFACE APPROACH</strong>
         <small id="detail">EDITOR GRAPH MIRROR // ACCESS POINT AHEAD</small>
         <div class="progress"><i id="progress"></i></div>
@@ -25,7 +26,7 @@ app.innerHTML = `
 
       <section class="panel note-panel">
         <b>Camera path is deterministic.</b><br />
-        The camera follows the tested presentation path. Player input is reserved for NET decisions and progression.
+        The Runner owns traversal state. Player input is reserved for NET decisions and progression.
       </section>
 
       <section id="encounter-gate" class="encounter-gate panel" aria-live="polite" hidden>
@@ -41,7 +42,7 @@ app.innerHTML = `
         <div id="route-choice-buttons" class="route-choice-buttons"></div>
       </section>
 
-      <section class="controls desktop-controls" aria-label="Acceptance playback controls">
+      <section class="controls desktop-controls" aria-label="Run playback controls">
         <button id="play" type="button">Pause</button>
         <button id="reset" type="button">Reset</button>
         <input id="scrub" type="range" min="0" max="1" step="0.001" value="0" aria-label="Timeline" />
@@ -53,11 +54,11 @@ app.innerHTML = `
           <button id="mobile-back" class="mobile-step" type="button" aria-label="Back five seconds">−5s</button>
           <button id="mobile-play" class="mobile-primary" type="button" aria-label="Pause or resume">Ⅱ</button>
           <button id="mobile-forward" class="mobile-step" type="button" aria-label="Forward five seconds">+5s</button>
-          <button id="mobile-reset" class="mobile-reset" type="button" aria-label="Restart tour">↺</button>
+          <button id="mobile-reset" class="mobile-reset" type="button" aria-label="Restart run">↺</button>
         </div>
       </section>
 
-      <span class="corner-mark">NEXT // PRODUCTION PIPELINE</span>
+      <span class="corner-mark">RUN // PRODUCTION</span>
     </div>
   </main>
 `;
@@ -91,6 +92,7 @@ const runtime = new NextAcceptanceRuntime(world, acceptanceArchitectureDocument,
   routeChoiceTitle: get('route-choice-title'),
   routeChoiceButtons: get('route-choice-buttons'),
 });
+attachRunnerEntity(runtime);
 
 const syncMobilePlay = (): void => {
   const state = playButton.textContent?.trim().toLowerCase();
@@ -133,3 +135,4 @@ setInterval(syncMobileScrub, 120);
 syncMobilePlay();
 syncMobileScrub();
 runtime.start();
+document.getElementById('boot-status')?.remove();

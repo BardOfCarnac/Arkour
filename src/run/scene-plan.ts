@@ -1,6 +1,6 @@
 import type { Vec3 } from './types';
 
-export type SceneMaterial = 'dark' | 'edge' | 'ghost';
+export type SceneMaterial = 'dark' | 'edge' | 'ghost' | 'conductor' | 'ceramic';
 
 export type RoutePosition =
   | { distance: number; at?: never }
@@ -29,6 +29,26 @@ export interface AperturePiece extends BasePiece {
 export interface MassPiece extends BasePiece {
   kind: 'mass';
   size: Vec3;
+}
+
+export interface CylinderPiece extends BasePiece {
+  kind: 'cylinder';
+  radius: number;
+  length: number;
+}
+
+export interface RingPiece extends BasePiece {
+  kind: 'ring';
+  radius: number;
+  tube: number;
+}
+
+export interface RepeatPiece extends BasePiece {
+  kind: 'repeat';
+  count: number;
+  spacing: number;
+  size: Vec3;
+  axis: 'right' | 'up' | 'forward';
 }
 
 export interface OverpassPiece extends BasePiece {
@@ -76,6 +96,9 @@ export interface DecorativeRoutePiece extends BasePiece {
 export type ScenePiece =
   | AperturePiece
   | MassPiece
+  | CylinderPiece
+  | RingPiece
+  | RepeatPiece
   | OverpassPiece
   | SpinePiece
   | CanyonPiece

@@ -1,0 +1,143 @@
+{
+  "format": "arkour-runner-pose-bank",
+  "version": 1,
+  "coordinateConvention": {
+    "x": "body left/right",
+    "y": "head-to-foot body axis",
+    "positiveZ": "body front / facing normal"
+  },
+  "curvePolicy": "blend-source-curves",
+  "sources": {
+    "candidateA": "./runner-glyph-v2-candidate-a.json",
+    "candidateB": "./runner-glyph-v2-candidate-b.json"
+  },
+  "poses": {
+    "travel_head_first": {
+      "source": "candidateA",
+      "sourcePose": "flying",
+      "orientation": "head-first",
+      "roles": ["travel", "fall", "dive"],
+      "selection": "deliberate aggressive/high-speed dive; never entered without a flip"
+    },
+    "travel_feet_first": {
+      "source": "candidateB",
+      "sourcePose": "flying",
+      "orientation": "feet-first",
+      "roles": ["travel", "fall", "default-descent"],
+      "selection": "default travelling/falling pose"
+    },
+    "neutral_base": {
+      "source": "candidateA",
+      "sourcePose": "upright",
+      "orientation": "feet-first",
+      "roles": ["neutral", "standing", "hover", "hold", "interaction-base"],
+      "selection": "primary adaptable neutral pose; semantic-light by design"
+    },
+    "neutral_fall": {
+      "source": "candidateB",
+      "sourcePose": "upright",
+      "orientation": "feet-first",
+      "roles": ["neutral", "fall", "hover", "low-speed-travel"],
+      "selection": "secondary feet-first falling/neutral shape"
+    },
+    "landing_recovery": {
+      "source": "candidateA",
+      "sourcePose": "landing",
+      "orientation": "feet-first",
+      "roles": ["landing", "recovery", "impact-absorption"],
+      "selection": "controlled landing and recovery bridge back to neutral"
+    },
+    "landing_impact": {
+      "source": "candidateB",
+      "sourcePose": "landing",
+      "orientation": "feet-first",
+      "roles": ["landing", "impact", "dramatic", "asymmetric"],
+      "selection": "first frame/beat of a dramatic superhero-style landing"
+    }
+  },
+  "invariants": {
+    "defaultTravelPose": "travel_feet_first",
+    "defaultNeutralPose": "neutral_base",
+    "landingRequiresFeetFirstOrientation": true,
+    "headFirstRequiresFlipTransition": true,
+    "neutralPosesCarryNoGameplayMeaning": true,
+    "poseSelectionMustNotChangeRunTopology": true
+  },
+  "transitions": [
+    {
+      "id": "depart_default",
+      "from": ["neutral_base", "neutral_fall"],
+      "to": "travel_feet_first",
+      "kind": "blend",
+      "durationMs": 300,
+      "trigger": "departure"
+    },
+    {
+      "id": "enter_head_first",
+      "from": ["travel_feet_first", "neutral_fall"],
+      "to": "travel_head_first",
+      "kind": "flip-blend",
+      "durationMs": 420,
+      "rotation": { "axis": "local-x", "degrees": 180 },
+      "trigger": "explicit head-first dive selection"
+    },
+    {
+      "id": "exit_head_first",
+      "from": ["travel_head_first"],
+      "to": "travel_feet_first",
+      "kind": "flip-blend",
+      "durationMs": 420,
+      "rotation": { "axis": "local-x", "degrees": 180 },
+      "trigger": "leaving head-first travel or preparing to land",
+      "mustCompleteBefore": "landing"
+    },
+    {
+      "id": "neutral_variation",
+      "from": ["neutral_base"],
+      "to": "neutral_fall",
+      "reverseAllowed": true,
+      "kind": "blend",
+      "durationMs": 520,
+      "trigger": "low-speed fall, hover variation, or presentation choice"
+    },
+    {
+      "id": "land_standard",
+      "from": ["travel_feet_first", "neutral_fall", "neutral_base"],
+      "to": "landing_recovery",
+      "kind": "blend",
+      "durationMs": 160,
+      "trigger": "standard contact"
+    },
+    {
+      "id": "land_dramatic",
+      "from": ["travel_feet_first", "neutral_fall", "neutral_base"],
+      "to": "landing_impact",
+      "kind": "snap-blend",
+      "durationMs": 80,
+      "trigger": "dramatic contact"
+    },
+    {
+      "id": "impact_absorb",
+      "from": ["landing_impact"],
+      "to": "landing_recovery",
+      "kind": "blend",
+      "durationMs": 120,
+      "trigger": "immediately after dramatic impact"
+    },
+    {
+      "id": "settle_to_neutral",
+      "from": ["landing_recovery"],
+      "to": "neutral_base",
+      "kind": "blend",
+      "durationMs": 240,
+      "trigger": "landing recovery complete"
+    }
+  ],
+  "selectionHints": {
+    "slowOrHeld": ["neutral_base", "neutral_fall"],
+    "normalDescent": ["travel_feet_first"],
+    "aggressiveDive": ["travel_head_first"],
+    "standardLandingSequence": ["landing_recovery", "neutral_base"],
+    "dramaticLandingSequence": ["landing_impact", "landing_recovery", "neutral_base"]
+  }
+}

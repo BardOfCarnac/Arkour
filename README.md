@@ -2,7 +2,7 @@
 
 A lightweight browser runtime for traversing Cyberpunk RED-style NET architectures as continuous 3D spaces.
 
-The first milestone is deliberately narrow: a production-quality **Run page** that can consume a finished 3D route network, carry a traveller through it continuously, present encounters and spatial branches, and keep rendering/UI/input concerns separate from architecture generation.
+The first milestone is deliberately narrow: a production-quality **Run page** that can consume a finished 3D route network plus a separate visual scene plan, carry a traveller through it continuously, present encounters and spatial branches, and keep rendering/UI/input concerns separate from architecture generation.
 
 ## Stack
 
@@ -16,6 +16,8 @@ The first milestone is deliberately narrow: a production-quality **Run page** th
 
 The Run page owns traversal, camera motion, runtime state, proximity interactions, spatial branch selection, input, HUD, and rendering. It does **not** generate NET architecture.
 
+Gameplay topology and visual architecture are now separate inputs. `RunWorld` describes real routes, encounters, and junctions; `ScenePlan` describes route-relative machinery around those routes without creating additional gameplay choices.
+
 The acceptance world currently exercises the mechanics we need before architecture generation is introduced:
 
 - continuous 3D travel;
@@ -26,7 +28,9 @@ The acceptance world currently exercises the mechanics we need before architectu
 - smooth camera look-ahead and banking;
 - Hold/Resume visual state;
 - mouse/touch branch controls plus keyboard input;
-- sparse test geometry for pass-by, aperture, overpass, occlusion, and depth cues.
+- route-relative aperture, mass, overpass, canyon, spine, machinery-field, interchange, and decorative-route motifs;
+- deterministic seeded machinery-field and particle placement;
+- decorative infrastructure that can imply false routes without becoming selectable graph edges.
 
 ## Development
 
@@ -51,4 +55,4 @@ npm run build
 
 ## Not in v0.1
 
-Architecture generation, editing, multiplayer, rules automation, persistence, elaborate shaders, weather, sound systems, and WebXR are deliberately out of scope until the Run loop itself is solid.
+Procedural architecture generation, editing, multiplayer, rules automation, persistence, elaborate shaders, weather, sound systems, and WebXR are deliberately out of scope until the Run loop itself is solid.

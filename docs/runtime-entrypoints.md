@@ -14,10 +14,10 @@ Its authority chain is:
 4. connectivity-aware node machinery
 5. continuous structural chassis
 6. route-safe vertical-city packing
-7. deterministic presentation camera
-8. Runner entity and pose presentation
+7. Runner entity and pose presentation
+8. separate Runner and Spectator presentation cameras
 
-Player input controls NET decisions and progression. The camera remains presentation infrastructure.
+Player input controls NET decisions and progression. View mode changes only how the same run is observed: **Runner** uses the guided traversal presentation, while **Spectator** renders the same production scene and Runner entity from an external chase/orbit camera. Neither view owns gameplay state.
 
 ## `/next/` — temporary compatibility alias
 

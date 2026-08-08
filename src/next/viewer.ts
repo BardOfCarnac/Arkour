@@ -80,7 +80,7 @@ export function attachViewerMode(
 
   const updateSpectatorCamera = (now: number): void => {
     const snapshot = (window as ViewerWindow).ArkourRunnerSnapshot;
-    if (!snapshot?.visible || !snapshot.routeId || snapshot.distance === undefined) {
+    if (!runner.visible || !snapshot?.visible || !snapshot.routeId || snapshot.distance === undefined) {
       updateSurfaceCamera();
       return;
     }

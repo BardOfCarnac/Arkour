@@ -85,7 +85,7 @@ export function createAcceptanceWorld(): RunWorld {
       {
         id: 'fork-a',
         incomingRoute: 'trunk',
-        at: 0.96,
+        at: 1,
         exits: [
           { routeId: 'left', label: 'LEFT', markerAt: 0.22 },
           { routeId: 'center', label: 'DOWN', markerAt: 0.18 },

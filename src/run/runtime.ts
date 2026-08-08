@@ -128,6 +128,7 @@ export class RunRuntime {
   private findJunction(): void {
     const junction = this.world.junctions.find((candidate) => candidate.incomingRoute === this.currentRoute.id);
     if (!junction) {
+      if (this.activeJunction) this.clearBranchChoices();
       this.activeJunction = null;
       return;
     }
@@ -141,13 +142,13 @@ export class RunRuntime {
           0,
           junction.exits.findIndex((exit) => exit.routeId === junction.defaultExit),
         );
+        this.activeJunction = junction;
+        this.renderBranchChoices();
       }
-      this.activeJunction = junction;
       this.state = 'APPROACH';
-      this.renderBranchChoices();
     } else {
+      if (this.activeJunction) this.clearBranchChoices();
       this.activeJunction = null;
-      this.clearBranchChoices();
     }
   }
 
@@ -177,7 +178,7 @@ export class RunRuntime {
     const next = this.routes.get(routeId);
     if (!next) throw new Error(`Unknown route: ${routeId}`);
     this.currentRoute = next;
-    this.distance = 0.01;
+    this.distance = 0;
     this.activeJunction = null;
     this.activeEncounter = null;
     this.state = 'RESUME';
@@ -199,12 +200,14 @@ export class RunRuntime {
       this.held = !this.held;
       this.state = this.held ? 'HELD' : 'RESUME';
       this.elements.holdButton.textContent = this.held ? 'Resume' : 'Hold';
+      this.updateHud();
       return;
     }
 
     if (action === 'pause') {
       this.paused = !this.paused;
       this.elements.pauseButton.textContent = this.paused ? 'Unpause' : 'Pause';
+      this.updateHud();
       return;
     }
 
@@ -212,11 +215,11 @@ export class RunRuntime {
 
     if (action === 'previous') {
       this.selectedExitIndex = (this.selectedExitIndex - 1 + this.activeJunction.exits.length) % this.activeJunction.exits.length;
-      this.renderBranchChoices();
+      this.updateBranchSelection();
     }
     if (action === 'next') {
       this.selectedExitIndex = (this.selectedExitIndex + 1) % this.activeJunction.exits.length;
-      this.renderBranchChoices();
+      this.updateBranchSelection();
     }
   };
 
@@ -226,14 +229,25 @@ export class RunRuntime {
 
     this.activeJunction.exits.forEach((exit, index) => {
       const button = document.createElement('button');
-      button.className = `branch-choice${index === this.selectedExitIndex ? ' selected' : ''}`;
+      button.className = 'branch-choice';
       button.textContent = exit.label;
       button.dataset.routeId = exit.routeId;
       button.addEventListener('click', () => {
         this.selectedExitIndex = index;
-        this.renderBranchChoices();
+        this.updateBranchSelection();
       });
       this.elements.branchLayer.appendChild(button);
+    });
+
+    this.updateBranchSelection();
+  }
+
+  private updateBranchSelection(): void {
+    const buttons = Array.from(this.elements.branchLayer.querySelectorAll<HTMLButtonElement>('.branch-choice'));
+    buttons.forEach((button, index) => {
+      const selected = index === this.selectedExitIndex;
+      button.classList.toggle('selected', selected);
+      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
     });
   }
 

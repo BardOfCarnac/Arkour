@@ -1,6 +1,6 @@
 import './styles.css';
+import { generateArchitecture } from './architecture/generate';
 import { RunRuntime } from './run/runtime';
-import { createAcceptanceScenePlan } from './run/scene-plan';
 import { createAcceptanceWorld } from './run/world';
 
 const app = document.querySelector<HTMLDivElement>('#app');
@@ -40,7 +40,10 @@ const get = <T extends HTMLElement>(id: string): T => {
   return element as T;
 };
 
-const runtime = new RunRuntime(createAcceptanceWorld(), createAcceptanceScenePlan(), {
+const world = createAcceptanceWorld();
+const architecture = generateArchitecture(world, { seed: 4712 });
+
+const runtime = new RunRuntime(world, architecture, {
   canvasHost: get('viewport'),
   state: get('run-state'),
   route: get('route-name'),

@@ -16,9 +16,9 @@ The first milestone is deliberately narrow: a production-quality **Run page** th
 
 The Run page owns traversal, camera motion, runtime state, proximity interactions, spatial branch selection, input, HUD, and rendering. It does **not** generate NET architecture.
 
-Gameplay topology and visual architecture are now separate inputs. `RunWorld` describes real routes, encounters, and junctions; `ScenePlan` describes route-relative machinery around those routes without creating additional gameplay choices.
+Gameplay topology and visual architecture are separate inputs. `RunWorld` describes real routes, encounters, and junctions; `ScenePlan` describes route-relative machinery around those routes without creating additional gameplay choices.
 
-The acceptance world currently exercises the mechanics we need before architecture generation is introduced:
+The acceptance world exercises:
 
 - continuous 3D travel;
 - a descending trunk route;
@@ -28,9 +28,24 @@ The acceptance world currently exercises the mechanics we need before architectu
 - smooth camera look-ahead and banking;
 - Hold/Resume visual state;
 - mouse/touch branch controls plus keyboard input;
-- route-relative aperture, mass, overpass, canyon, spine, machinery-field, interchange, and decorative-route motifs;
+- route-relative scenery and decorative infrastructure;
 - deterministic seeded machinery-field and particle placement;
-- decorative infrastructure that can imply false routes without becoming selectable graph edges.
+- false infrastructure that can imply routes without becoming selectable graph edges.
+
+## Architecture generator
+
+The next layer compiles `RunWorld` into a deterministic `ScenePlan`. The runtime remains unaware of architecture semantics: it still receives topology plus scenery as two separate inputs.
+
+`generateArchitecture(world, { seed })` currently builds four visual passes:
+
+- encounter architecture for Password, File, Control, Black ICE habitat, and Demon spaces;
+- route infrastructure such as heatsink fins, bus spines, component fields, cables, and deep-route vias;
+- junction switchyards with real exits surrounded by decorative false buses;
+- macro architecture that makes a small graph read as a much larger circuit-board megastructure.
+
+The low-level renderer only knows reusable primitives. Alongside the original boxes, apertures, canyons, fields, interchanges, and decorative tubes, `ScenePlan` now supports cylinders, rings, and regular repeated members. Semantic component ideas such as connector gates, memory banks, relay hubs, switchyards, and transformer-like Demon cores live exclusively in the generator.
+
+Generation is seed-stable: route, encounter, junction, and field variations derive their own seeds so changing one generated area does not require rearranging the whole scene.
 
 ## Development
 
@@ -55,4 +70,4 @@ npm run build
 
 ## Not in v0.1
 
-Procedural architecture generation, editing, multiplayer, rules automation, persistence, elaborate shaders, weather, sound systems, and WebXR are deliberately out of scope until the Run loop itself is solid.
+Editing, multiplayer, rules automation, persistence, elaborate shaders, weather, sound systems, and WebXR remain out of scope until the Run loop and architecture-generation seams are solid.

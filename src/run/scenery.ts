@@ -1,15 +1,19 @@
 import * as THREE from 'three';
 import { RUN_CAMERA_PROFILE } from './camera-profile';
+import { randomBetween, seededRandom } from './random';
 import type { RuntimeRoute } from './route';
 import { createRouteFrame, sampleRouteFrameAtDistance } from './route-frame';
 import type {
   AperturePiece,
   CanyonPiece,
+  CylinderPiece,
   DecorativeRoutePiece,
   FieldPiece,
   InterchangePiece,
   MassPiece,
   OverpassPiece,
+  RepeatPiece,
+  RingPiece,
   RouteAnchor,
   SceneMaterial,
   ScenePiece,
@@ -23,11 +27,15 @@ const UNIT_BOX_BOUNDS = new THREE.Box3(
   new THREE.Vector3(-0.5, -0.5, -0.5),
   new THREE.Vector3(0.5, 0.5, 0.5),
 );
+const UNIT_CYLINDER = new THREE.CylinderGeometry(0.5, 0.5, 1, 18, 1, false);
+UNIT_CYLINDER.rotateX(Math.PI / 2);
 
 interface Palette {
   dark: THREE.MeshStandardMaterial;
   edge: THREE.MeshStandardMaterial;
   ghost: THREE.MeshBasicMaterial;
+  conductor: THREE.MeshStandardMaterial;
+  ceramic: THREE.MeshStandardMaterial;
 }
 
 interface Pose {
@@ -45,6 +53,8 @@ function createPalette(): Palette {
     dark: new THREE.MeshStandardMaterial({ color: 0x11181d, roughness: 0.72, metalness: 0.42 }),
     edge: new THREE.MeshStandardMaterial({ color: 0x22313a, roughness: 0.58, metalness: 0.5 }),
     ghost: new THREE.MeshBasicMaterial({ color: 0x426a82, transparent: true, opacity: 0.34 }),
+    conductor: new THREE.MeshStandardMaterial({ color: 0x76513f, roughness: 0.4, metalness: 0.78 }),
+    ceramic: new THREE.MeshStandardMaterial({ color: 0x677178, roughness: 0.84, metalness: 0.06 }),
   };
 }
 
@@ -184,6 +194,75 @@ function addMassLike(
   if (!objectIntersectsCorridor(mesh, corridor)) scene.add(mesh);
 }
 
+function addCylinder(
+  scene: THREE.Scene,
+  routes: Map<string, RuntimeRoute>,
+  piece: CylinderPiece,
+  palette: Palette,
+  corridor: CameraCorridor,
+): void {
+  const mesh = new THREE.Mesh(UNIT_CYLINDER, materialFor(palette, piece.material));
+  applyPose(mesh, poseFor(routes, piece.anchor, piece.rotation));
+  mesh.scale.set(piece.radius * 2, piece.radius * 2, piece.length);
+  if (!objectIntersectsCorridor(mesh, corridor)) scene.add(mesh);
+}
+
+function addRing(
+  scene: THREE.Scene,
+  routes: Map<string, RuntimeRoute>,
+  piece: RingPiece,
+  palette: Palette,
+  corridor: CameraCorridor,
+): void {
+  if (piece.radius - piece.tube <= corridor.clearance) return;
+  const geometry = new THREE.TorusGeometry(piece.radius, piece.tube, 8, 36);
+  const mesh = new THREE.Mesh(geometry, materialFor(palette, piece.material));
+  applyPose(mesh, poseFor(routes, piece.anchor, piece.rotation));
+  scene.add(mesh);
+}
+
+function addRepeat(
+  scene: THREE.Scene,
+  routes: Map<string, RuntimeRoute>,
+  piece: RepeatPiece,
+  palette: Palette,
+  corridor: CameraCorridor,
+): void {
+  const group = new THREE.Group();
+  applyPose(group, poseFor(routes, piece.anchor, piece.rotation));
+  group.updateMatrixWorld(true);
+
+  const mesh = new THREE.InstancedMesh(UNIT_BOX, materialFor(palette, piece.material), piece.count);
+  const instance = new THREE.Object3D();
+  const candidateBox = new THREE.Box3();
+  const worldMatrix = new THREE.Matrix4();
+  let accepted = 0;
+
+  for (let index = 0; index < piece.count; index += 1) {
+    const offset = (index - (piece.count - 1) / 2) * piece.spacing;
+    instance.position.set(
+      piece.axis === 'right' ? offset : 0,
+      piece.axis === 'up' ? offset : 0,
+      piece.axis === 'forward' ? offset : 0,
+    );
+    instance.rotation.set(0, 0, 0);
+    instance.scale.set(piece.size[0], piece.size[1], piece.size[2]);
+    instance.updateMatrix();
+
+    worldMatrix.multiplyMatrices(group.matrixWorld, instance.matrix);
+    candidateBox.copy(UNIT_BOX_BOUNDS).applyMatrix4(worldMatrix);
+    if (boxIntersectsCorridor(candidateBox, corridor)) continue;
+
+    mesh.setMatrixAt(accepted, instance.matrix);
+    accepted += 1;
+  }
+
+  mesh.count = accepted;
+  mesh.instanceMatrix.needsUpdate = true;
+  group.add(mesh);
+  scene.add(group);
+}
+
 function addOverpass(
   scene: THREE.Scene,
   routes: Map<string, RuntimeRoute>,
@@ -213,21 +292,6 @@ function addCanyon(
   addBox(group, size, material, corridor, [-offset, 0, 0]);
   addBox(group, size, material, corridor, [offset, 0, 0]);
   scene.add(group);
-}
-
-function seededRandom(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state += 0x6d2b79f5;
-    let value = state;
-    value = Math.imul(value ^ (value >>> 15), value | 1);
-    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function randomBetween(random: () => number, min: number, max: number): number {
-  return min + (max - min) * random();
 }
 
 function addField(
@@ -341,6 +405,15 @@ function addPiece(
     case 'mass':
     case 'spine':
       addMassLike(scene, routes, piece, palette, corridor);
+      break;
+    case 'cylinder':
+      addCylinder(scene, routes, piece, palette, corridor);
+      break;
+    case 'ring':
+      addRing(scene, routes, piece, palette, corridor);
+      break;
+    case 'repeat':
+      addRepeat(scene, routes, piece, palette, corridor);
       break;
     case 'overpass':
       addOverpass(scene, routes, piece, palette, corridor);

@@ -4,8 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#030506" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta name="arkour-preview" content="runner-glyph-3d-v2" />
   <title>Arkour — Runner Glyph 3D Editor</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles.css?v=3d2" />
   <script type="importmap">
     {
       "imports": {
@@ -19,7 +23,7 @@
   <main class="editor-shell">
     <header class="topbar">
       <div>
-        <strong>ARKOUR // RUNNER GLYPH 3D</strong>
+        <strong>ARKOUR // RUNNER GLYPH 3D <small>V2</small></strong>
         <span>tap a handle, drag it in the current view plane, orbit empty space</span>
       </div>
       <button id="reset-all" class="quiet" type="button">RESET TO V1</button>
@@ -89,6 +93,6 @@
     </section>
   </main>
 
-  <script type="module" src="./editor.js"></script>
+  <script type="module" src="./editor.js?v=3d2"></script>
 </body>
 </html>

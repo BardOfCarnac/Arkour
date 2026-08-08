@@ -12,9 +12,20 @@ interface RouteBuildResult {
   endNodeId: string;
 }
 
-const COLUMN_SPACING = 31;
-const FLOOR_FORWARD_SPACING = 36;
-const FLOOR_DROP = 11;
+/**
+ * Spatial route grammar.
+ *
+ * Same-column links fall straight down. A one-column branch moves through a
+ * horizontal vector whose magnitude is sqrt(3) times the floor drop, so the
+ * resulting branch segment is exactly 60 degrees from the vertical trunk in
+ * real 3D space. The horizontal step is split across X/Z so left/right branches
+ * flare into depth instead of living on a flat diagram plane.
+ */
+const FLOOR_DROP = 36;
+const BRANCH_HORIZONTAL_STEP = FLOOR_DROP * Math.sqrt(3);
+const BRANCH_AZIMUTH = Math.PI / 8;
+const COLUMN_X_SPACING = BRANCH_HORIZONTAL_STEP * Math.cos(BRANCH_AZIMUTH);
+const COLUMN_Z_SPACING = BRANCH_HORIZONTAL_STEP * Math.sin(BRANCH_AZIMUTH);
 const ENTRY_POINT: Vec3 = [0, 8, 0];
 
 function runtimeEncounterType(kind: ArchitectureNodeKind): EncounterSpec['type'] {
@@ -124,9 +135,9 @@ function computePlacements(
 
 function worldPosition(placement: LogicalPlacement): Vec3 {
   return [
-    placement.column * COLUMN_SPACING,
-    7 - placement.floor * FLOOR_DROP,
-    16 + placement.floor * FLOOR_FORWARD_SPACING,
+    placement.column * COLUMN_X_SPACING,
+    ENTRY_POINT[1] - placement.floor * FLOOR_DROP,
+    Math.abs(placement.column) * COLUMN_Z_SPACING,
   ];
 }
 

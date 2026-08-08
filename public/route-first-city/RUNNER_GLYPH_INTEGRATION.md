@@ -1,48 +1,81 @@
 # Runner Glyph integration
 
-The spectator prototype now renders the authored `arkour-runner-glyph` v2 body instead of the temporary wireframe humanoid.
+The spectator prototype renders the authored Runner Glyph body from `runner-pose-bank-v1.json` rather than treating a single three-pose file as the runtime contract.
 
-## Candidate A
+## Pose bank
 
-The accepted first 3D body is stored at:
+The source assets remain independent authored checkpoints:
 
-`public/runner-glyph/runner-glyph-v2-candidate-a.json`
+- `public/runner-glyph/runner-glyph-v2-candidate-a.json`
+- `public/runner-glyph/runner-glyph-v2-candidate-b.json`
 
-It preserves the supplied Flying, Upright and Landing poses exactly, including curve `0.47` and all authored XYZ coordinates.
+The runtime vocabulary is defined by:
 
-## Local axes
+`public/runner-glyph/runner-pose-bank-v1.json`
+
+Its six canonical poses are:
+
+- `travel_head_first`
+- `travel_feet_first`
+- `neutral_base`
+- `neutral_fall`
+- `landing_recovery`
+- `landing_impact`
+
+The pose bank maps those names back to the exact authored source poses. Cross-source morphs blend both XYZ control points and the source curve values.
+
+## Local axes and orientation
 
 The glyph definition keeps the editor convention:
 
 - **X** = body left/right
-- **Y** = head-to-foot / travel axis
+- **Y** = head-to-foot body axis
 - **+Z** = body front / facing direction
 
-At runtime local +Y is aligned to the traversal route's forward direction. Local +Z becomes the body's facing normal perpendicular to the route. This keeps travel direction and facing direction distinct.
+For feet-first poses, local +Y is aligned to the traversal route's forward direction. Head-first travel is not faked by changing the silhouette: the runtime performs the bank's 180-degree local-X flip, which reverses local Y/Z relative to the route. The exit flip continues through 360 degrees so the tumble reads continuously before a landing.
 
-## Pose use
+Travel direction and facing direction therefore remain distinct.
 
-The three authored poses are intentionally treated as a small reusable vocabulary, not three hard gameplay states:
+## Prototype choreography
 
-- **Flying** — normal high-speed traversal
-- **Landing** — compression / impact pose when arriving at a node
-- **Upright** — adaptable neutral base pose for held, hovering, standing, interacting or future action states
+The current route-first demo does not yet have authoritative speed or action input, so pose selection is deliberately a presentation test rather than gameplay semantics.
 
-The current spectator prototype blends continuously through these poses using signed distance to the nearest node:
+Every traversal leg exercises the reusable neutral/fall chain:
 
-1. Flying → Landing over the final approach.
-2. Landing → Upright immediately after contact.
-3. Upright → Flying during departure.
+1. `neutral_base` → `neutral_fall`
+2. `neutral_fall` → `travel_feet_first`
 
-This is presentation logic only. The glyph data remains independent of `ArchitectureDocument`, and a future authoritative runtime can drive these pose weights from real transit/hold/action state instead of prototype route distance.
+To make the new flip visible without inventing speed thresholds, the legs terminating at **Hellhound** and **Efreet** are temporarily flagged as aggressive-dive demonstrations:
+
+1. `travel_feet_first` → 180° flip-blend → `travel_head_first`
+2. hold `travel_head_first` through the middle of the leg
+3. 180° exit flip-blend back to `travel_feet_first`
+4. complete the flip before the landing sequence starts
+
+Other legs remain feet-first.
+
+## Landing sequences
+
+Ordinary nodes use the standard sequence from the pose bank:
+
+`travel_feet_first` → `landing_recovery` → `neutral_base`
+
+Hellhound and Efreet temporarily exercise the dramatic sequence:
+
+`travel_feet_first` → `landing_impact` → `landing_recovery` → `neutral_base`
+
+The bank durations are used directly and converted to route distance using the prototype's 27-second playback. At the final Efreet node, where route distance can no longer advance after contact, the post-impact recovery is completed against real animation time so the run can settle instead of freezing on the impact pose.
 
 ## Rendering
 
 The glyph remains a warped sheet rather than a conventional anatomical mesh. The spectator renderer:
 
-- transforms all ten semantic control points into route-relative world space,
-- smooths the authored contour using the preset curve value,
+- resolves all six bank poses from Candidate A/B,
+- transforms the ten semantic control points into route-relative world space,
+- applies the current local-X orientation during flips,
+- smooths the contour using the current blended curve value,
 - renders a translucent face, bright outline and faint internal structure,
+- exposes pose, transition, weights, curve and orientation through `window.ArkourRunSnapshot`,
 - preserves the temporary humanoid only as a load-failure fallback.
 
-No procedural banking, velocity stretch, impact recoil or action gestures are applied yet. Those should be added around the authored poses only after the base silhouette has been judged at real Arkour scale.
+The demo target sets are intentionally temporary. Real head-first selection should later be driven by speed/action intent, and dramatic landing selection by actual presentation/gameplay context rather than node names.

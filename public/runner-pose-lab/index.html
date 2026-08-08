@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#030506" />
+  <title>Arkour — Runner Pose Lab</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <strong>ARKOUR // RUNNER POSE LAB</strong>
+      <span>comparison · morph · non-destructive deformation</span>
+    </div>
+    <div class="top-actions">
+      <button id="link-toggle" class="active" type="button">LINK DEFORMERS: ON</button>
+      <button id="ghost-toggle" class="active" type="button">ORIGINAL GHOST: ON</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="gallery-section panel">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">AUTHORED + DERIVED SHAPES</span>
+          <strong>POSE BOARD</strong>
+        </div>
+        <span>Tap a pose to work on it. Linked deformers update the whole board.</span>
+      </div>
+      <div id="pose-gallery" class="pose-gallery" aria-label="Runner pose gallery"></div>
+      <div id="snapshot-gallery" class="pose-gallery snapshots" aria-label="Saved deformation snapshots"></div>
+    </section>
+
+    <section class="workspace">
+      <section class="viewer panel">
+        <div class="viewer-head">
+          <div>
+            <span class="eyebrow">SELECTED POSE</span>
+            <strong id="selected-label">LOADING…</strong>
+            <span id="selected-meta"></span>
+          </div>
+          <div class="view-buttons" aria-label="3D view controls">
+            <button type="button" data-view="front">FRONT</button>
+            <button type="button" data-view="side">SIDE</button>
+            <button type="button" data-view="top">TOP</button>
+            <button type="button" data-view="orbit" class="active">ORBIT</button>
+          </div>
+        </div>
+        <canvas id="lab-view" aria-label="3D runner pose deformation preview"></canvas>
+        <div class="viewer-footer">
+          <span>+Z = BODY FRONT</span>
+          <span id="variant-readout">ORIGINAL</span>
+        </div>
+      </section>
+
+      <aside class="controls panel">
+        <div class="section-head compact">
+          <div>
+            <span class="eyebrow">NON-DESTRUCTIVE</span>
+            <strong>DEFORMERS</strong>
+          </div>
+          <button id="reset" type="button">RESET</button>
+        </div>
+
+        <label class="control-row"><span>LENGTH <output data-output="length">1.00</output></span><input data-param="length" type="range" min="0.55" max="1.60" step="0.01" value="1" /></label>
+        <label class="control-row"><span>WIDTH <output data-output="width">1.00</output></span><input data-param="width" type="range" min="0.55" max="1.60" step="0.01" value="1" /></label>
+        <label class="control-row"><span>DEPTH <output data-output="depth">1.00</output></span><input data-param="depth" type="range" min="0.25" max="2.00" step="0.01" value="1" /></label>
+        <label class="control-row"><span>LEAN <output data-output="lean">0.00</output></span><input data-param="lean" type="range" min="-1" max="1" step="0.01" value="0" /></label>
+        <label class="control-row"><span>BOW Z <output data-output="bow">0</output></span><input data-param="bow" type="range" min="-90" max="90" step="1" value="0" /></label>
+        <label class="control-row"><span>TWIST <output data-output="twist">0°</output></span><input data-param="twist" type="range" min="-150" max="150" step="1" value="0" /></label>
+        <label class="control-row"><span>TAPER <output data-output="taper">0.00</output></span><input data-param="taper" type="range" min="-0.75" max="0.75" step="0.01" value="0" /></label>
+        <label class="control-row"><span>CURVE OFFSET <output data-output="curveOffset">0.00</output></span><input data-param="curveOffset" type="range" min="-0.35" max="0.35" step="0.01" value="0" /></label>
+
+        <div class="divider"></div>
+
+        <label class="select-row"><span>MORPH TARGET</span><select id="morph-target"><option value="">NONE</option></select></label>
+        <label class="control-row"><span>MORPH <output id="morph-output">0%</output></span><input id="morph" type="range" min="0" max="1" step="0.01" value="0" /></label>
+
+        <div class="button-grid">
+          <button id="mirror" type="button">MIRROR X</button>
+          <button id="nudge" type="button">NUDGE</button>
+          <button id="snapshot" class="primary" type="button">SNAPSHOT</button>
+          <button id="copy-json" type="button">COPY VARIANT JSON</button>
+        </div>
+        <p class="hint">Snapshots are local to this browser and remain side-by-side below the authored board. Nothing here changes the live Runner runtime.</p>
+      </aside>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

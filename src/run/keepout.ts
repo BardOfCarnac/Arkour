@@ -22,53 +22,62 @@ export interface SpatialKeepout {
   camera: KeepoutCorridor;
 }
 
-function buildSegments(points: readonly THREE.Vector3[]): readonly (readonly [THREE.Vector3, THREE.Vector3])[] {
-  const segments: Array<readonly [THREE.Vector3, THREE.Vector3]> = [];
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const from = points[index];
-    const to = points[index + 1];
+function appendSegments(
+  points: THREE.Vector3[],
+  segments: Array<readonly [THREE.Vector3, THREE.Vector3]>,
+  routePoints: readonly THREE.Vector3[],
+): void {
+  points.push(...routePoints);
+  for (let index = 0; index < routePoints.length - 1; index += 1) {
+    const from = routePoints[index];
+    const to = routePoints[index + 1];
     if (from && to) segments.push([from, to]);
   }
-  return segments;
 }
 
 function sampleRouteCorridor(routes: Map<string, RuntimeRoute>): KeepoutCorridor {
   const points: THREE.Vector3[] = [];
+  const segments: Array<readonly [THREE.Vector3, THREE.Vector3]> = [];
 
   for (const route of routes.values()) {
+    const routePoints: THREE.Vector3[] = [];
     const samples = Math.max(2, Math.ceil(route.length / RUN_ROUTE_PROFILE.corridorSampleStep));
     for (let index = 0; index <= samples; index += 1) {
-      points.push(route.pointAtDistance(route.length * (index / samples)).clone());
+      routePoints.push(route.pointAtDistance(route.length * (index / samples)).clone());
     }
+    appendSegments(points, segments, routePoints);
   }
 
   return {
     points,
-    segments: buildSegments(points),
+    segments,
     clearance: RUN_ROUTE_PROFILE.sceneryClearance,
   };
 }
 
 function sampleCameraCorridor(routes: Map<string, RuntimeRoute>): KeepoutCorridor {
   const points: THREE.Vector3[] = [];
+  const segments: Array<readonly [THREE.Vector3, THREE.Vector3]> = [];
   const frame = createRouteFrame();
 
   for (const route of routes.values()) {
+    const routePoints: THREE.Vector3[] = [];
     const samples = Math.max(2, Math.ceil(route.length / RUN_CAMERA_PROFILE.corridorSampleStep));
     for (let index = 0; index <= samples; index += 1) {
       const distance = route.length * (index / samples);
       sampleRouteFrameAtDistance(route, distance, frame);
-      points.push(
+      routePoints.push(
         frame.position.clone()
           .addScaledVector(frame.forward, -RUN_CAMERA_PROFILE.trailDistance)
           .addScaledVector(frame.up, RUN_CAMERA_PROFILE.upOffset),
       );
     }
+    appendSegments(points, segments, routePoints);
   }
 
   return {
     points,
-    segments: buildSegments(points),
+    segments,
     clearance: RUN_CAMERA_PROFILE.sceneryClearance
       + Math.hypot(RUN_CAMERA_PROFILE.holdRightAmplitude, RUN_CAMERA_PROFILE.holdUpAmplitude),
   };

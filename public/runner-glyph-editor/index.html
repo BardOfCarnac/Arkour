@@ -4,43 +4,34 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#030506" />
-  <title>Arkour — Runner Glyph Editor</title>
+  <title>Arkour — Runner Glyph 3D Editor</title>
   <link rel="stylesheet" href="./styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
   <main class="editor-shell">
     <header class="topbar">
       <div>
-        <strong>ARKOUR // RUNNER GLYPH</strong>
-        <span>touch the cyan handles to shape the avatar</span>
+        <strong>ARKOUR // RUNNER GLYPH 3D</strong>
+        <span>tap a handle, drag it in the current view plane, orbit empty space</span>
       </div>
-      <button id="reset-all" class="quiet" type="button">RESET ALL</button>
+      <button id="reset-all" class="quiet" type="button">RESET TO V1</button>
     </header>
 
-    <section class="workspace" aria-label="Runner glyph design canvas">
-      <svg id="editor" viewBox="-120 -140 240 280" role="img" aria-label="Editable runner glyph silhouette">
-        <defs>
-          <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
-            <feGaussianBlur stdDeviation="2.2" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-        <g id="ghost-layer" aria-hidden="true"></g>
-        <g id="glyph-layer">
-          <path id="glyph-fill" class="glyph-fill" d="" />
-          <path id="glyph-outline" class="glyph-outline" d="" />
-          <path id="glyph-spine" class="glyph-spine" d="" />
-        </g>
-        <g id="handle-layer"></g>
-      </svg>
-
+    <section class="workspace" aria-label="3D runner glyph design canvas">
+      <canvas id="editor" aria-label="Editable 3D runner glyph"></canvas>
+      <div class="view-chip" id="view-chip">ORBIT</div>
       <aside class="point-readout" aria-live="polite">
         <span class="eyebrow">SELECTED HANDLE</span>
-        <strong id="point-name">HEAD</strong>
-        <span id="point-coords">0, -112</span>
+        <strong id="point-name">HEAD / TOP</strong>
+        <span id="point-coords">X 0 · Y -128 · Z 0</span>
       </aside>
     </section>
 
@@ -54,16 +45,30 @@
     </section>
 
     <section class="panel controls" aria-label="Glyph editor controls">
+      <div class="control-block">
+        <span class="control-title">VIEW / DRAG PLANE</span>
+        <div class="control-row view-buttons">
+          <button class="view-button" data-view="front" type="button">FRONT</button>
+          <button class="view-button" data-view="side" type="button">SIDE</button>
+          <button class="view-button" data-view="top" type="button">TOP</button>
+          <button class="view-button active" data-view="orbit" type="button">ORBIT</button>
+        </div>
+      </div>
+
       <div class="control-row toggles">
-        <button id="symmetry" class="active" type="button" aria-pressed="true">SYMMETRY: ON</button>
+        <button id="symmetry" type="button" aria-pressed="false">SYMMETRY: OFF</button>
         <button id="ghosts" class="active" type="button" aria-pressed="true">GHOST POSES: ON</button>
         <button id="morph" type="button" aria-pressed="false">PLAY MORPH</button>
       </div>
 
       <div class="control-row sliders">
+        <label class="depth-control">
+          <span>SELECTED DEPTH <output id="depth-value">0</output></span>
+          <input id="depth" type="range" min="-120" max="120" step="1" value="0" />
+        </label>
         <label>
           <span>CURVE</span>
-          <input id="curve" type="range" min="0" max="1" step="0.01" value="0.68" />
+          <input id="curve" type="range" min="0" max="1" step="0.01" value="0.27" />
         </label>
         <label>
           <span>FILL</span>
@@ -73,12 +78,13 @@
 
       <div class="control-row actions">
         <button id="reset-pose" type="button">RESET POSE</button>
-        <button id="copy-json" type="button">COPY JSON</button>
-        <button id="download-svg" type="button">DOWNLOAD SVG</button>
+        <button id="flatten-pose" type="button">FLATTEN Z</button>
+        <button id="copy-json" type="button">COPY JSON V2</button>
+        <button id="download-json" type="button">DOWNLOAD JSON</button>
       </div>
 
       <p class="help">
-        Handles are semantic rather than generic vertices: head, necks, hands, under-arms, flanks and foot. With symmetry on, dragging either side mirrors its partner. Your design is saved locally on this device.
+        Front drags X/Y, Side drags Z/Y, Top drags X/Z. Orbit mode lets you inspect freely; dragging a selected handle there moves it in a camera-facing plane. The depth slider is the precise mobile control for Z. Head and foot stay on the centreline in X, but may move in depth.
       </p>
     </section>
   </main>

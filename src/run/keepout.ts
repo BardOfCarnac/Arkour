@@ -99,7 +99,7 @@ function sampleDefaultCameraCorridor(routes: Map<string, RuntimeRoute>): Keepout
 function presentationCameraCorridor(paths: readonly PresentationKeepoutPath[]): KeepoutCorridor {
   const points: THREE.Vector3[] = [];
   const segments: Array<readonly [THREE.Vector3, THREE.Vector3]> = [];
-  let clearance = RUN_CAMERA_PROFILE.sceneryClearance;
+  let clearance: number = RUN_CAMERA_PROFILE.sceneryClearance;
 
   for (const path of paths) {
     if (path.camera.length === 0) continue;

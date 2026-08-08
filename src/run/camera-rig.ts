@@ -11,6 +11,7 @@ export class CameraRig {
   private readonly holdOffset = new THREE.Vector3();
   private readonly turn = new THREE.Vector3();
   private roll = 0;
+  private initialized = false;
 
   update(
     camera: THREE.PerspectiveCamera,
@@ -40,8 +41,13 @@ export class CameraRig {
       this.desiredPosition.add(this.holdOffset);
     }
 
-    const smoothing = 1 - Math.exp(-dt * 7.5);
-    camera.position.lerp(this.desiredPosition, smoothing);
+    if (!this.initialized) {
+      camera.position.copy(this.desiredPosition);
+      this.initialized = true;
+    } else {
+      const smoothing = 1 - Math.exp(-dt * 7.5);
+      camera.position.lerp(this.desiredPosition, smoothing);
+    }
     camera.lookAt(this.lookPoint);
 
     this.turn.crossVectors(this.frame.forward, this.aheadTangent);

@@ -14,6 +14,10 @@ interface AcceptanceElements {
   playButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
   scrub: HTMLInputElement;
+  encounterGate: HTMLElement;
+  encounterTitle: HTMLElement;
+  encounterMeta: HTMLElement;
+  encounterContinue: HTMLButtonElement;
   routeChoice: HTMLElement;
   routeChoiceTitle: HTMLElement;
   routeChoiceButtons: HTMLElement;
@@ -306,8 +310,15 @@ function nextEncounter(route: RuntimeRoute, distance: number): EncounterSpec | u
 function stageFor(
   timeline: number,
   sample: TourSample | null,
+  pendingEncounter?: EncounterSpec,
   pendingJunction?: JunctionSpec,
 ): { title: string; detail: string } {
+  if (pendingEncounter) {
+    return {
+      title: pendingEncounter.label.toUpperCase(),
+      detail: `${pendingEncounter.meta || pendingEncounter.type.toUpperCase()} // HOLD FOR RESOLUTION`,
+    };
+  }
   if (pendingJunction) {
     return {
       title: 'CHOOSE ROUTE',
@@ -334,10 +345,13 @@ export class NextAcceptanceRuntime {
   private readonly routes = new Map<string, RuntimeRoute>();
   private readonly clock = new THREE.Clock();
   private readonly selectedExits = new Map<string, string>();
+  private readonly clearedEncounters = new Set<string>();
   private tour: TourLeg[] = [];
   private undergroundCamera!: THREE.CatmullRomCurve3;
   private undergroundLook!: THREE.CatmullRomCurve3;
   private pendingJunction?: JunctionSpec;
+  private pendingEncounter?: EncounterSpec;
+  private elapsed = 0;
   private readonly surfaceCamera = new THREE.CatmullRomCurve3([
     new THREE.Vector3(-52, 15.5, -34),
     new THREE.Vector3(-39, 14.2, -25),
@@ -385,7 +399,9 @@ export class NextAcceptanceRuntime {
     glow.position.set(0, SURFACE_Y + 1.5, 0);
     this.scene.add(glow);
 
+    this.hideEncounterGate();
     this.hideRouteChoice();
+    this.elements.encounterContinue.addEventListener('click', this.continueEncounter);
     this.elements.playButton.addEventListener('click', this.togglePlay);
     this.elements.resetButton.addEventListener('click', this.reset);
     this.elements.scrub.addEventListener('input', this.scrub);
@@ -414,6 +430,7 @@ export class NextAcceptanceRuntime {
 
   private tick = (): void => {
     const dt = Math.min(this.clock.getDelta(), 0.05);
+    this.elapsed += dt;
     if (this.playing) {
       this.timeline = Math.min(1, this.timeline + dt / AUTO_DURATION);
       if (this.timeline >= 1) {
@@ -426,7 +443,11 @@ export class NextAcceptanceRuntime {
       ? sampleTour(this.tour, (this.timeline - SURFACE_END) / (1 - SURFACE_END))
       : null;
 
-    if (sample && this.pauseForRouteChoice(sample)) {
+    if (sample && this.pauseForEncounter(sample)) {
+      sample = sampleTour(this.tour, (this.timeline - SURFACE_END) / (1 - SURFACE_END));
+    }
+
+    if (sample && !this.pendingEncounter && this.pauseForRouteChoice(sample)) {
       sample = sampleTour(this.tour, (this.timeline - SURFACE_END) / (1 - SURFACE_END));
     }
 
@@ -435,8 +456,59 @@ export class NextAcceptanceRuntime {
     this.renderer.render(this.scene, this.camera);
   };
 
+  private pauseForEncounter(sample: TourSample): boolean {
+    if (this.pendingEncounter || this.pendingJunction) return false;
+
+    const encounter = [...(sample.route.spec.encounters ?? [])]
+      .filter((candidate) => !this.clearedEncounters.has(candidate.id))
+      .sort((a, b) => a.at - b.at)
+      .find((candidate) => {
+        const encounterDistance = candidate.at * sample.route.length;
+        const remaining = encounterDistance - sample.distance;
+        return remaining <= candidate.engageDistance && remaining >= -0.75;
+      });
+    if (!encounter) return false;
+
+    const encounterDistance = encounter.at * sample.route.length;
+    const stopOffset = Math.min(1.4, Math.max(0.7, encounter.engageDistance * 0.18));
+    const stopDistance = Math.max(0, encounterDistance - stopOffset);
+    this.timeline = this.timelineForRouteDistance(sample.route.id, stopDistance);
+    this.playing = false;
+    this.pendingEncounter = encounter;
+    this.elements.playButton.textContent = 'Resolve node';
+    this.showEncounterGate(encounter);
+    return true;
+  }
+
+  private timelineForRouteDistance(routeId: string, distance: number): number {
+    const leg = this.tour.find((candidate) => candidate.route.id === routeId);
+    if (!leg) return this.timeline;
+    const local = THREE.MathUtils.clamp(distance / Math.max(leg.route.length, 1e-6), 0, 1);
+    const undergroundProgress = leg.start + (leg.end - leg.start) * local;
+    return SURFACE_END + undergroundProgress * (1 - SURFACE_END);
+  }
+
+  private showEncounterGate(encounter: EncounterSpec): void {
+    this.elements.encounterTitle.textContent = encounter.label.toUpperCase();
+    this.elements.encounterMeta.textContent = `${encounter.meta || encounter.type.toUpperCase()} // RESOLVE AT TABLE`;
+    this.elements.encounterGate.hidden = false;
+  }
+
+  private hideEncounterGate(): void {
+    this.elements.encounterGate.hidden = true;
+  }
+
+  private continueEncounter = (): void => {
+    if (!this.pendingEncounter) return;
+    this.clearedEncounters.add(this.pendingEncounter.id);
+    this.pendingEncounter = undefined;
+    this.hideEncounterGate();
+    this.playing = true;
+    this.elements.playButton.textContent = 'Pause';
+  };
+
   private pauseForRouteChoice(sample: TourSample): boolean {
-    if (this.pendingJunction) return false;
+    if (this.pendingJunction || this.pendingEncounter) return false;
     const junction = this.world.junctions.find((candidate) => (
       candidate.incomingRoute === sample.route.id && !this.selectedExits.has(candidate.id)
     ));
@@ -504,8 +576,6 @@ export class NextAcceptanceRuntime {
     this.hideRouteChoice();
     this.rebuildTour();
 
-    // Recalculate the junction's position against the newly selected complete
-    // path, then start just beyond it so the next frame is already on the exit.
     this.timeline = Math.min(1, this.timelineForJunction(junction) + 0.001);
     this.playing = true;
     this.elements.playButton.textContent = 'Pause';
@@ -523,11 +593,24 @@ export class NextAcceptanceRuntime {
     const u = THREE.MathUtils.clamp((this.timeline - SURFACE_END) / (1 - SURFACE_END), 0, 1);
     this.undergroundCamera.getPointAt(u, this.camera.position);
     const target = this.undergroundLook.getPointAt(Math.min(1, u + 0.018));
+
+    if (this.pendingEncounter) {
+      const forward = target.clone().sub(this.camera.position).normalize();
+      const referenceUp = Math.abs(forward.y) > 0.94
+        ? new THREE.Vector3(0, 0, 1)
+        : new THREE.Vector3(0, 1, 0);
+      const right = new THREE.Vector3().crossVectors(referenceUp, forward).normalize();
+      const up = new THREE.Vector3().crossVectors(forward, right).normalize();
+      this.camera.position
+        .addScaledVector(right, Math.sin(this.elapsed * 0.8) * 0.34)
+        .addScaledVector(up, Math.cos(this.elapsed * 0.55) * 0.12);
+    }
+
     this.camera.lookAt(target);
   }
 
   private updateHud(sample: TourSample | null): void {
-    const stage = stageFor(this.timeline, sample, this.pendingJunction);
+    const stage = stageFor(this.timeline, sample, this.pendingEncounter, this.pendingJunction);
     this.elements.stage.textContent = stage.title;
     this.elements.detail.textContent = stage.detail;
     this.elements.progress.style.width = `${this.timeline * 100}%`;
@@ -535,7 +618,7 @@ export class NextAcceptanceRuntime {
   }
 
   private togglePlay = (): void => {
-    if (this.pendingJunction) return;
+    if (this.pendingEncounter || this.pendingJunction) return;
     if (this.timeline >= 1) {
       this.timeline = 0;
       this.playing = true;
@@ -548,7 +631,10 @@ export class NextAcceptanceRuntime {
 
   private reset = (): void => {
     this.selectedExits.clear();
+    this.clearedEncounters.clear();
+    this.pendingEncounter = undefined;
     this.pendingJunction = undefined;
+    this.hideEncounterGate();
     this.hideRouteChoice();
     this.rebuildTour();
     this.timeline = 0;
@@ -557,7 +643,9 @@ export class NextAcceptanceRuntime {
   };
 
   private scrub = (): void => {
+    this.pendingEncounter = undefined;
     this.pendingJunction = undefined;
+    this.hideEncounterGate();
     this.hideRouteChoice();
     this.timeline = Number(this.elements.scrub.value);
     this.playing = false;
@@ -565,6 +653,10 @@ export class NextAcceptanceRuntime {
   };
 
   private keydown = (event: KeyboardEvent): void => {
+    if (this.pendingEncounter && event.key === 'Enter') {
+      this.continueEncounter();
+      return;
+    }
     if (this.pendingJunction && /^[1-9]$/.test(event.key)) {
       const exit = this.pendingJunction.exits[Number(event.key) - 1];
       if (exit) this.chooseExit(this.pendingJunction, exit.routeId);

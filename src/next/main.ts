@@ -25,7 +25,14 @@ app.innerHTML = `
 
       <section class="panel note-panel">
         <b>Camera path is deterministic.</b><br />
-        The presentation camera follows the tested clearance-safe path. Player input is reserved for traversal decisions such as route choice.
+        The camera follows the tested presentation path. Player input is reserved for NET decisions and progression.
+      </section>
+
+      <section id="encounter-gate" class="encounter-gate panel" aria-live="polite" hidden>
+        <span class="eyebrow">ENCOUNTER HOLD</span>
+        <strong id="encounter-title">NODE</strong>
+        <small id="encounter-meta"></small>
+        <button id="encounter-continue" class="encounter-continue" type="button">CONTINUE</button>
       </section>
 
       <section id="route-choice" class="route-choice panel" aria-live="polite" hidden>
@@ -76,6 +83,10 @@ const runtime = new NextAcceptanceRuntime(world, acceptanceArchitectureDocument,
   playButton,
   resetButton,
   scrub,
+  encounterGate: get('encounter-gate'),
+  encounterTitle: get('encounter-title'),
+  encounterMeta: get('encounter-meta'),
+  encounterContinue: get<HTMLButtonElement>('encounter-continue'),
   routeChoice: get('route-choice'),
   routeChoiceTitle: get('route-choice-title'),
   routeChoiceButtons: get('route-choice-buttons'),

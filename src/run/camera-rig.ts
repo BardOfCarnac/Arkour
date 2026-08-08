@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { RuntimeRoute } from './route';
+import { RUN_CAMERA_PROFILE } from './camera-profile';
 import { createRouteFrame, sampleRouteFrameAtDistance } from './route-frame';
 
 export class CameraRig {
@@ -26,12 +27,16 @@ export class CameraRig {
     route.tangentAtDistance(lookDistance, this.aheadTangent);
 
     this.desiredPosition.copy(this.frame.position)
-      .addScaledVector(this.frame.forward, -4.2)
-      .addScaledVector(this.frame.up, 1.65);
+      .addScaledVector(this.frame.forward, -RUN_CAMERA_PROFILE.trailDistance)
+      .addScaledVector(this.frame.up, RUN_CAMERA_PROFILE.upOffset);
 
     if (held) {
-      this.holdOffset.copy(this.frame.right).multiplyScalar(Math.sin(elapsed * 0.8) * 0.8);
-      this.holdOffset.addScaledVector(this.frame.up, Math.cos(elapsed * 0.55) * 0.28);
+      this.holdOffset.copy(this.frame.right)
+        .multiplyScalar(Math.sin(elapsed * 0.8) * RUN_CAMERA_PROFILE.holdRightAmplitude);
+      this.holdOffset.addScaledVector(
+        this.frame.up,
+        Math.cos(elapsed * 0.55) * RUN_CAMERA_PROFILE.holdUpAmplitude,
+      );
       this.desiredPosition.add(this.holdOffset);
     }
 

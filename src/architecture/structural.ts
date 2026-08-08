@@ -5,6 +5,7 @@ import type { RouteSpec, RunWorld, Vec3 } from '../run/types';
 const INNER_RAIL_RIGHT = 22;
 const INNER_RAIL_UP = -5;
 const FRAME_RIGHT = 27;
+const FRAME_MID = 2.5;
 const FRAME_TOP = 12;
 const FRAME_BOTTOM = -12;
 const TARGET_RAIL_SPAN = 11;
@@ -36,6 +37,7 @@ function addLongitudinalChassis(pieces: ScenePiece[], route: RouteSpec): void {
     for (const side of [-1, 1] as const) {
       pieces.push(
         { kind: 'spine', anchor: routeAnchor(route.id, at, side * INNER_RAIL_RIGHT, INNER_RAIL_UP), size: [1.55, 1.55, sectionLength], material: 'conductor' },
+        { kind: 'spine', anchor: routeAnchor(route.id, at, side * FRAME_RIGHT, FRAME_MID), size: [1.9, 1.9, sectionLength], material: 'edge' },
         { kind: 'spine', anchor: routeAnchor(route.id, at, side * FRAME_RIGHT, FRAME_TOP), size: [1.9, 1.9, sectionLength], material: 'edge' },
         { kind: 'spine', anchor: routeAnchor(route.id, at, side * FRAME_RIGHT, FRAME_BOTTOM), size: [1.9, 1.9, sectionLength], material: 'edge' },
       );

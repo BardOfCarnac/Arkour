@@ -1,0 +1,273 @@
+:root {
+  color-scheme: dark;
+  --bg: #030506;
+  --panel: rgba(4, 10, 12, .88);
+  --panel-soft: rgba(4, 10, 12, .68);
+  --line: rgba(85, 241, 220, .28);
+  --cyan: #55f1dc;
+  --cyan-soft: rgba(85, 241, 220, .22);
+  --ink: #e4fbf7;
+  --muted: #79938f;
+  --danger: #ff6e7e;
+}
+
+* { box-sizing: border-box; }
+html, body { width: 100%; min-height: 100%; margin: 0; background: var(--bg); }
+body {
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overscroll-behavior: none;
+}
+button, input { font: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+
+.editor-shell {
+  width: min(100%, 980px);
+  min-height: 100dvh;
+  margin: 0 auto;
+  display: grid;
+  grid-template-rows: auto minmax(420px, 1fr) auto auto;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(19, 46, 44, .20), transparent 42%),
+    var(--bg);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: max(14px, env(safe-area-inset-top)) 16px 12px;
+  border-bottom: 1px solid rgba(85, 241, 220, .13);
+  background: rgba(3, 6, 7, .92);
+}
+.topbar div { min-width: 0; }
+.topbar strong {
+  display: block;
+  color: var(--cyan);
+  font-size: 13px;
+  letter-spacing: .14em;
+}
+.topbar span {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: .06em;
+}
+
+.workspace {
+  position: relative;
+  min-height: 420px;
+  overflow: hidden;
+  touch-action: none;
+}
+#editor {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  display: block;
+  touch-action: none;
+  user-select: none;
+}
+
+.glyph-fill {
+  fill: rgba(85, 241, 220, .10);
+  stroke: none;
+}
+.glyph-outline {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  filter: url(#glow);
+}
+.glyph-spine {
+  fill: none;
+  stroke: rgba(85, 241, 220, .36);
+  stroke-width: 1;
+  stroke-dasharray: 5 5;
+  vector-effect: non-scaling-stroke;
+}
+.ghost-path {
+  fill: none;
+  stroke: rgba(130, 166, 161, .18);
+  stroke-width: 1.1;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.handle-group { cursor: grab; }
+.handle-group:active { cursor: grabbing; }
+.handle-hit {
+  fill: transparent;
+  stroke: transparent;
+  pointer-events: all;
+}
+.handle-ring {
+  fill: #03100f;
+  stroke: var(--cyan);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  filter: url(#glow);
+  pointer-events: none;
+}
+.handle-dot {
+  fill: var(--cyan);
+  pointer-events: none;
+}
+.handle-label {
+  fill: rgba(228, 251, 247, .72);
+  font-size: 8px;
+  letter-spacing: .08em;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(3, 5, 6, .92);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.handle-group.selected .handle-ring {
+  fill: var(--cyan);
+  stroke: #e9fffb;
+}
+.handle-group.selected .handle-dot { fill: #03100f; }
+
+.point-readout {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  min-width: 132px;
+  padding: 9px 10px;
+  border: 1px solid rgba(85, 241, 220, .18);
+  background: rgba(3, 8, 9, .78);
+  backdrop-filter: blur(5px);
+  pointer-events: none;
+}
+.point-readout .eyebrow {
+  display: block;
+  color: var(--muted);
+  font-size: 7px;
+  letter-spacing: .15em;
+}
+.point-readout strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--cyan);
+  font-size: 11px;
+  letter-spacing: .1em;
+}
+.point-readout > span:last-child {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.panel {
+  border-top: 1px solid rgba(85, 241, 220, .16);
+  background: var(--panel);
+}
+.pose-panel { padding: 9px 12px 10px; }
+.pose-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+.pose-tab,
+.controls button,
+.topbar button {
+  min-height: 42px;
+  border: 1px solid rgba(85, 241, 220, .24);
+  border-radius: 0;
+  background: #071011;
+  color: var(--ink);
+  padding: 9px 11px;
+  font-size: 9px;
+  letter-spacing: .1em;
+  cursor: pointer;
+}
+.pose-tab.selected,
+.controls button.active {
+  border-color: var(--cyan);
+  color: #03110e;
+  background: var(--cyan);
+}
+.topbar button.quiet {
+  min-height: 36px;
+  color: var(--muted);
+  background: transparent;
+}
+.phase-note {
+  margin-top: 7px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 8px;
+  letter-spacing: .08em;
+}
+
+.controls {
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+}
+.control-row {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+.control-row > button { flex: 1 1 0; }
+.sliders { align-items: center; }
+.sliders label {
+  flex: 1 1 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 9px;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(85, 241, 220, .15);
+  background: rgba(7, 16, 17, .72);
+}
+.sliders span {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: .1em;
+}
+.sliders input[type="range"] {
+  width: 100%;
+  accent-color: var(--cyan);
+}
+.help {
+  margin: 9px 2px 0;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.55;
+}
+
+@media (max-width: 640px) {
+  .editor-shell {
+    grid-template-rows: auto minmax(390px, 52dvh) auto auto;
+  }
+  .topbar { padding-left: 10px; padding-right: 10px; }
+  .topbar strong { font-size: 11px; }
+  .topbar span { display: none; }
+  .workspace, #editor { min-height: 390px; }
+  .point-readout { left: 9px; top: 9px; }
+  .pose-panel, .controls { padding-left: 9px; padding-right: 9px; }
+  .pose-tab, .controls button { min-height: 45px; padding: 8px 6px; font-size: 8px; }
+  .toggles { flex-wrap: wrap; }
+  .toggles button { flex: 1 1 30%; }
+  .actions { flex-wrap: wrap; }
+  .actions button { flex: 1 1 30%; }
+  .sliders { gap: 6px; }
+  .sliders label { padding: 0 7px; gap: 6px; }
+}
+
+@media (max-width: 410px) {
+  .controls { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+  .control-row { gap: 5px; margin-bottom: 6px; }
+  .pose-tabs { gap: 5px; }
+  .toggles button,
+  .actions button { min-width: 30%; }
+  .help { display: none; }
+}

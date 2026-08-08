@@ -5,6 +5,7 @@ import { createRouteFrame, sampleRouteFrameAtDistance } from '../run/route-frame
 import { RuntimeRoute } from '../run/route';
 import { addScenePlan } from '../run/scenery';
 import type { EncounterSpec, JunctionSpec, RunWorld, Vec3 } from '../run/types';
+import { createNextPresentationKeepout } from './presentation-keepout';
 
 interface AcceptanceElements {
   canvasHost: HTMLElement;
@@ -389,7 +390,8 @@ export class NextAcceptanceRuntime {
     this.elements.canvasHost.appendChild(this.renderer.domElement);
 
     const architecture = generateRouteFirstArchitecture(world, { seed: 4712, density: 0.82 });
-    addScenePlan(this.scene, this.routes, architecture);
+    const presentationKeepout = createNextPresentationKeepout(world, this.routes);
+    addScenePlan(this.scene, this.routes, architecture, presentationKeepout);
     addWireAccents(this.scene);
     addRouteRails(this.scene, this.routes);
     addSurface(this.scene);

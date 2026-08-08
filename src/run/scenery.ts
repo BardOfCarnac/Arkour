@@ -400,9 +400,10 @@ export function addScenePlan(
   scene: THREE.Scene,
   routes: Map<string, RuntimeRoute>,
   plan: ScenePlan,
+  spatialKeepout?: SpatialKeepout,
 ): void {
   const palette = createPalette();
-  const keepout = createSpatialKeepout(routes);
+  const keepout = spatialKeepout ?? createSpatialKeepout(routes);
 
   if (plan.lighting) {
     const ambient = new THREE.HemisphereLight(

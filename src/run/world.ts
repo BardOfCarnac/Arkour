@@ -97,59 +97,6 @@ export function createAcceptanceWorld(): RunWorld {
   };
 }
 
-function darkMaterial(): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({ color: 0x11181d, roughness: 0.72, metalness: 0.42 });
-}
-
-function edgeMaterial(): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({ color: 0x22313a, roughness: 0.58, metalness: 0.5 });
-}
-
-export function addAcceptanceFixtures(scene: THREE.Scene): void {
-  const dark = darkMaterial();
-  const edge = edgeMaterial();
-
-  const gate = new THREE.Group();
-  const vertical = new THREE.BoxGeometry(1.3, 12, 2.8);
-  const horizontal = new THREE.BoxGeometry(10, 1.3, 2.8);
-  const left = new THREE.Mesh(vertical, edge);
-  left.position.set(-5.2, 0, 0);
-  const right = left.clone();
-  right.position.x = 5.2;
-  const top = new THREE.Mesh(horizontal, edge);
-  top.position.y = 6.2;
-  const bottom = top.clone();
-  bottom.position.y = -6.2;
-  gate.add(left, right, top, bottom);
-  gate.position.set(0, 4.2, 19);
-  gate.rotation.x = -0.18;
-  scene.add(gate);
-
-  const mass = new THREE.Mesh(new THREE.BoxGeometry(14, 18, 28), dark);
-  mass.position.set(-13, -5, 43);
-  mass.rotation.y = -0.18;
-  scene.add(mass);
-
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(28, 1.8, 3), edge);
-  bridge.position.set(5, 3, 63);
-  bridge.rotation.z = 0.08;
-  scene.add(bridge);
-
-  const towerGeometry = new THREE.BoxGeometry(6, 28, 8);
-  const towerA = new THREE.Mesh(towerGeometry, dark);
-  towerA.position.set(-19, -15, 112);
-  const towerB = towerA.clone();
-  towerB.position.set(26, -18, 117);
-  const lowerMass = new THREE.Mesh(new THREE.BoxGeometry(14, 8, 34), edge);
-  lowerMass.position.set(-7, -59, 145);
-  scene.add(towerA, towerB, lowerMass);
-
-  const ambient = new THREE.HemisphereLight(0x7bc8ff, 0x020406, 0.85);
-  const key = new THREE.DirectionalLight(0xffffff, 1.4);
-  key.position.set(18, 30, -10);
-  scene.add(ambient, key);
-}
-
 export function addRouteGeometry(scene: THREE.Scene, routes: Map<string, RuntimeRoute>): Map<string, THREE.Mesh> {
   const meshes = new Map<string, THREE.Mesh>();
 
@@ -169,13 +116,26 @@ export function addRouteGeometry(scene: THREE.Scene, routes: Map<string, Runtime
   return meshes;
 }
 
-export function addParticles(scene: THREE.Scene): void {
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function addParticles(scene: THREE.Scene, seed = 0x41524b4f): void {
   const count = 720;
   const positions = new Float32Array(count * 3);
+  const random = seededRandom(seed);
+
   for (let i = 0; i < count; i += 1) {
-    positions[i * 3] = (Math.random() - 0.5) * 120;
-    positions[i * 3 + 1] = (Math.random() - 0.55) * 110;
-    positions[i * 3 + 2] = Math.random() * 230 - 15;
+    positions[i * 3] = (random() - 0.5) * 120;
+    positions[i * 3 + 1] = (random() - 0.55) * 110;
+    positions[i * 3 + 2] = random() * 230 - 15;
   }
 
   const geometry = new THREE.BufferGeometry();

@@ -4,7 +4,8 @@
   "sources": {
     "candidateA": "../runner-glyph/runner-glyph-v2-candidate-a.json",
     "candidateB": "../runner-glyph/runner-glyph-v2-candidate-b.json",
-    "candidateC": "../runner-glyph/runner-glyph-v2-candidate-c.json"
+    "candidateC": "../runner-glyph/runner-glyph-v2-candidate-c.json",
+    "derivedStrideB": "../runner-glyph/runner-glyph-v2-stride-b-derived.json"
   },
   "entries": [
     { "id": "travel_head_first", "label": "HEAD-FIRST DIVE", "source": "candidateA", "sourcePose": "flying", "family": "travel", "status": "banked" },
@@ -16,6 +17,6 @@
     { "id": "rail_brace", "label": "RAIL / BRAKE BRACE", "source": "candidateC", "sourcePose": "flying", "family": "hold", "status": "experimental" },
     { "id": "strike_extreme", "label": "STRIKE EXTREME", "source": "candidateC", "sourcePose": "upright", "family": "combat", "status": "experimental" },
     { "id": "stride_a", "label": "STRIDE A", "source": "candidateC", "sourcePose": "landing", "family": "locomotion", "status": "experimental" },
-    { "id": "stride_b", "label": "STRIDE B · MIRROR", "source": "candidateC", "sourcePose": "landing", "family": "locomotion", "status": "derived", "derive": "mirror-x" }
+    { "id": "stride_b", "label": "STRIDE B · MIRROR", "source": "derivedStrideB", "sourcePose": "landing", "family": "locomotion", "status": "derived" }
   ]
 }

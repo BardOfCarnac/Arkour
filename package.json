@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "node --check public/route-first-city/runner-view.js && tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

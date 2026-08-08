@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#030506" />
+  <title>Arkour — Runner Glyph Editor</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="editor-shell">
+    <header class="topbar">
+      <div>
+        <strong>ARKOUR // RUNNER GLYPH</strong>
+        <span>touch the cyan handles to shape the avatar</span>
+      </div>
+      <button id="reset-all" class="quiet" type="button">RESET ALL</button>
+    </header>
+
+    <section class="workspace" aria-label="Runner glyph design canvas">
+      <svg id="editor" viewBox="-120 -140 240 280" role="img" aria-label="Editable runner glyph silhouette">
+        <defs>
+          <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="2.2" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        <g id="ghost-layer" aria-hidden="true"></g>
+        <g id="glyph-layer">
+          <path id="glyph-fill" class="glyph-fill" d="" />
+          <path id="glyph-outline" class="glyph-outline" d="" />
+          <path id="glyph-spine" class="glyph-spine" d="" />
+        </g>
+        <g id="handle-layer"></g>
+      </svg>
+
+      <aside class="point-readout" aria-live="polite">
+        <span class="eyebrow">SELECTED HANDLE</span>
+        <strong id="point-name">HEAD</strong>
+        <span id="point-coords">0, -112</span>
+      </aside>
+    </section>
+
+    <section class="panel pose-panel" aria-label="Pose selection">
+      <div class="pose-tabs" role="tablist" aria-label="Runner pose">
+        <button class="pose-tab" data-pose="flying" type="button" role="tab">FLYING</button>
+        <button class="pose-tab selected" data-pose="upright" type="button" role="tab">UPRIGHT</button>
+        <button class="pose-tab" data-pose="landing" type="button" role="tab">LANDING</button>
+      </div>
+      <div class="phase-note" id="pose-note">neutral / standing silhouette</div>
+    </section>
+
+    <section class="panel controls" aria-label="Glyph editor controls">
+      <div class="control-row toggles">
+        <button id="symmetry" class="active" type="button" aria-pressed="true">SYMMETRY: ON</button>
+        <button id="ghosts" class="active" type="button" aria-pressed="true">GHOST POSES: ON</button>
+        <button id="morph" type="button" aria-pressed="false">PLAY MORPH</button>
+      </div>
+
+      <div class="control-row sliders">
+        <label>
+          <span>CURVE</span>
+          <input id="curve" type="range" min="0" max="1" step="0.01" value="0.68" />
+        </label>
+        <label>
+          <span>FILL</span>
+          <input id="fill" type="range" min="0" max="0.35" step="0.01" value="0.10" />
+        </label>
+      </div>
+
+      <div class="control-row actions">
+        <button id="reset-pose" type="button">RESET POSE</button>
+        <button id="copy-json" type="button">COPY JSON</button>
+        <button id="download-svg" type="button">DOWNLOAD SVG</button>
+      </div>
+
+      <p class="help">
+        Handles are semantic rather than generic vertices: head, necks, hands, under-arms, flanks and foot. With symmetry on, dragging either side mirrors its partner. Your design is saved locally on this device.
+      </p>
+    </section>
+  </main>
+
+  <script type="module" src="./editor.js"></script>
+</body>
+</html>

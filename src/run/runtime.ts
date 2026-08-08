@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { CameraRig } from './camera-rig';
 import { RunInput, type RunAction } from './input';
 import { RuntimeRoute } from './route';
+import { addScenePlan } from './scenery';
+import type { ScenePlan } from './scene-plan';
 import type { EncounterSpec, JunctionSpec, RunState, RunWorld } from './types';
-import { addAcceptanceFixtures, addParticles, addRouteGeometry } from './world';
+import { addParticles, addRouteGeometry } from './world';
 
 interface RuntimeElements {
   canvasHost: HTMLElement;
@@ -44,6 +46,7 @@ export class RunRuntime {
 
   constructor(
     private readonly world: RunWorld,
+    scenePlan: ScenePlan,
     private readonly elements: RuntimeElements,
   ) {
     for (const spec of world.routes) {
@@ -62,7 +65,7 @@ export class RunRuntime {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.elements.canvasHost.appendChild(this.renderer.domElement);
 
-    addAcceptanceFixtures(this.scene);
+    addScenePlan(this.scene, this.routes, scenePlan);
     addParticles(this.scene);
     this.routeMeshes = addRouteGeometry(this.scene, this.routes);
     this.highlightRoute(this.currentRoute.id);

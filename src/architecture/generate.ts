@@ -1,6 +1,6 @@
 import { hashSeed, randomBetween, seededRandom } from '../run/random';
 import type { RouteAnchor, ScenePiece, ScenePlan } from '../run/scene-plan';
-import type { EncounterSpec, JunctionSpec, RouteSpec, RunWorld } from '../run/types';
+import type { EncounterSpec, JunctionSpec, RouteSpec, RunWorld, Vec3 } from '../run/types';
 
 export interface ArchitectureOptions {
   seed?: number;
@@ -8,6 +8,9 @@ export interface ArchitectureOptions {
 }
 
 const DEFAULT_ARCHITECTURE_SEED = 0x41524b4f;
+const BACKBONE_RIGHT = 22;
+const BACKBONE_UP = -5;
+const OUTER_FRAME_RIGHT = 27;
 
 function clampAt(at: number): number {
   return Math.max(0.02, Math.min(0.98, at));
@@ -37,6 +40,18 @@ function routeAnchor(
   forward = 0,
 ): RouteAnchor {
   return { routeId, at: clampAt(at), right, up, forward };
+}
+
+function pointDistance(a: Vec3, b: Vec3): number {
+  return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+}
+
+function estimateRouteLength(route: RouteSpec): number {
+  let length = 0;
+  for (const segment of route.segments) {
+    length += pointDistance(segment.from, segment.to);
+  }
+  return Math.max(42, length);
 }
 
 function buildPassword(pieces: ScenePiece[], encounter: EncounterSpec, seed: number): void {
@@ -340,6 +355,55 @@ function buildDemon(pieces: ScenePiece[], encounter: EncounterSpec): void {
   }
 }
 
+function encounterAttachmentRadius(type: EncounterSpec['type']): number {
+  switch (type) {
+    case 'password':
+      return 8.8;
+    case 'file':
+      return 12;
+    case 'control':
+      return 10.5;
+    case 'ice':
+      return 14.5;
+    case 'demon':
+      return 17.5;
+  }
+}
+
+function connectEncounterToBackbone(
+  pieces: ScenePiece[],
+  encounter: EncounterSpec,
+  seed: number,
+): void {
+  const random = seededRandom(hashSeed(seed, `feeds:${encounter.id}`));
+  const attachment = encounterAttachmentRadius(encounter.type);
+
+  pieces.push({
+    kind: 'overpass',
+    anchor: encounterAnchor(encounter, 0, 0, -7),
+    width: OUTER_FRAME_RIGHT * 2,
+    height: 1.25,
+    depth: 2.2,
+    material: 'edge',
+  });
+
+  for (const side of [-1, 1] as const) {
+    const lift = randomBetween(random, -0.6, 0.8);
+    pieces.push({
+      kind: 'decorative-route',
+      anchor: encounterAnchor(encounter),
+      points: [
+        [side * attachment, -3.2 + lift, -4.5],
+        [side * (attachment + 3.5), -4.8 + lift, -2],
+        [side * (BACKBONE_RIGHT - 2.5), BACKBONE_UP + lift, 0.5],
+        [side * BACKBONE_RIGHT, BACKBONE_UP, 4.5],
+      ],
+      radius: 0.42,
+      material: 'conductor',
+    });
+  }
+}
+
 function buildEncounter(pieces: ScenePiece[], encounter: EncounterSpec, seed: number): void {
   switch (encounter.type) {
     case 'password':
@@ -358,6 +422,7 @@ function buildEncounter(pieces: ScenePiece[], encounter: EncounterSpec, seed: nu
       buildDemon(pieces, encounter);
       break;
   }
+  connectEncounterToBackbone(pieces, encounter, seed);
 }
 
 function routeVerticalDelta(route: RouteSpec): number {
@@ -365,6 +430,68 @@ function routeVerticalDelta(route: RouteSpec): number {
   const last = route.segments[route.segments.length - 1];
   if (!first || !last) return 0;
   return last.to[1] - first.from[1];
+}
+
+function addRouteBackbone(
+  pieces: ScenePiece[],
+  route: RouteSpec,
+  seed: number,
+  density: number,
+): void {
+  const random = seededRandom(hashSeed(seed, `backbone:${route.id}`));
+  const span = estimateRouteLength(route) * 0.92;
+  const bankCount = Math.max(5, Math.round(randomBetween(random, 6, 10) * density));
+
+  for (const side of [-1, 1] as const) {
+    pieces.push(
+      {
+        kind: 'spine',
+        anchor: routeAnchor(route.id, 0.5, side * BACKBONE_RIGHT, BACKBONE_UP),
+        size: [2.4, 2.4, span],
+        material: 'conductor',
+      },
+      {
+        kind: 'spine',
+        anchor: routeAnchor(route.id, 0.5, side * OUTER_FRAME_RIGHT, 2.5),
+        size: [3.4, 4.2, span * 0.88],
+        material: 'edge',
+      },
+      {
+        kind: 'repeat',
+        anchor: routeAnchor(route.id, side < 0 ? 0.38 : 0.62, side * OUTER_FRAME_RIGHT, 2.5),
+        count: bankCount,
+        spacing: randomBetween(random, 3.2, 4.2),
+        size: [7.2, randomBetween(random, 7, 12), 1.45],
+        axis: 'forward',
+        material: random() < 0.45 ? 'ceramic' : 'dark',
+      },
+    );
+
+    for (const at of [0.28, 0.52, 0.76]) {
+      pieces.push({
+        kind: 'decorative-route',
+        anchor: routeAnchor(route.id, at),
+        points: [
+          [side * OUTER_FRAME_RIGHT, 2.5, -4],
+          [side * 25, -0.5, -1],
+          [side * BACKBONE_RIGHT, BACKBONE_UP, 3],
+        ],
+        radius: 0.32,
+        material: 'conductor',
+      });
+    }
+  }
+
+  for (const at of [0.16, 0.36, 0.58, 0.8]) {
+    pieces.push({
+      kind: 'overpass',
+      anchor: routeAnchor(route.id, at, 0, 0, -7),
+      width: OUTER_FRAME_RIGHT * 2,
+      height: 1.2,
+      depth: 2.4,
+      material: 'edge',
+    });
+  }
 }
 
 function buildRouteInfrastructure(
@@ -377,47 +504,29 @@ function buildRouteInfrastructure(
   const side = random() < 0.5 ? -1 : 1;
   const finCount = Math.max(6, Math.round(randomBetween(random, 9, 14) * density));
 
-  pieces.push(
-    {
-      kind: 'repeat',
-      anchor: routeAnchor(route.id, randomBetween(random, 0.18, 0.34), side * 15, -3),
-      count: finCount,
-      spacing: randomBetween(random, 2.2, 3.1),
-      size: [0.75, randomBetween(random, 12, 21), randomBetween(random, 3.5, 5)],
-      axis: 'forward',
-      material: 'edge',
-    },
-    {
-      kind: 'spine',
-      anchor: routeAnchor(route.id, randomBetween(random, 0.48, 0.68), side * -19, -5),
-      size: [randomBetween(random, 4, 7), randomBetween(random, 38, 68), randomBetween(random, 7, 12)],
-      material: random() < 0.45 ? 'conductor' : 'dark',
-      rotation: [0, randomBetween(random, -0.16, 0.16), randomBetween(random, -0.05, 0.05)],
-    },
-    {
-      kind: 'field',
-      anchor: routeAnchor(route.id, randomBetween(random, 0.44, 0.72), 0, 0, 10),
-      count: Math.max(12, Math.round(24 * density)),
-      spread: [58, 42, 58],
-      minSize: [1.2, 2.2, 1.2],
-      maxSize: [6.5, 17, 8],
-      keepoutRadius: 10,
-      seed: hashSeed(seed, `field:${route.id}`),
-      material: 'dark',
-    },
-  );
+  addRouteBackbone(pieces, route, seed, density);
+
+  pieces.push({
+    kind: 'repeat',
+    anchor: routeAnchor(route.id, randomBetween(random, 0.18, 0.34), side * OUTER_FRAME_RIGHT, 4),
+    count: finCount,
+    spacing: randomBetween(random, 2.2, 3.1),
+    size: [6.2, randomBetween(random, 12, 21), 0.75],
+    axis: 'forward',
+    material: 'edge',
+  });
 
   const cableSide = side * -1;
   pieces.push({
     kind: 'decorative-route',
     anchor: routeAnchor(route.id, randomBetween(random, 0.38, 0.62), 0, 0, 0),
     points: [
-      [cableSide * 11, 10, -18],
-      [cableSide * 15, 13, -5],
-      [cableSide * 18, 9, 12],
-      [cableSide * 25, 15, 31],
+      [cableSide * BACKBONE_RIGHT, BACKBONE_UP, -18],
+      [cableSide * 25, 0, -5],
+      [cableSide * OUTER_FRAME_RIGHT, 2.5, 12],
+      [cableSide * OUTER_FRAME_RIGHT, 2.5, 31],
     ],
-    radius: 0.3,
+    radius: 0.34,
     material: 'conductor',
   });
 
@@ -435,6 +544,14 @@ function buildRouteInfrastructure(
         anchor: routeAnchor(route.id, 0.15),
         radius: 12.3,
         tube: 0.35,
+        material: 'edge',
+      },
+      {
+        kind: 'overpass',
+        anchor: routeAnchor(route.id, 0.135, 0, 0, -8),
+        width: 58,
+        height: 1.6,
+        depth: 3,
         material: 'edge',
       },
     );
@@ -457,6 +574,14 @@ function buildJunction(pieces: ScenePiece[], junction: JunctionSpec, seed: numbe
       tube: 0.55,
       material: 'conductor',
     },
+    {
+      kind: 'overpass',
+      anchor: routeAnchor(junction.incomingRoute, junction.at, 0, 0, -8),
+      width: 68,
+      height: 1.8,
+      depth: 3.4,
+      material: 'edge',
+    },
   );
   addFalseBuses(
     pieces,
@@ -476,6 +601,8 @@ function buildMacroArchitecture(
   const start = world.routes.find((route) => route.id === world.startRoute);
   if (!start) return;
   const random = seededRandom(hashSeed(seed, 'macro'));
+  const carrierSpan = estimateRouteLength(start) * 0.9;
+  const cylinderRadius = randomBetween(random, 7, 10);
 
   pieces.push(
     {
@@ -494,33 +621,72 @@ function buildMacroArchitecture(
       material: 'conductor',
     },
     {
-      kind: 'field',
-      anchor: routeAnchor(start.id, 0.76, 0, 0, 24),
-      count: Math.max(24, Math.round(46 * density)),
-      spread: [86, 64, 90],
-      minSize: [2, 4, 2],
-      maxSize: [10, 26, 14],
-      keepoutRadius: 13,
-      seed: hashSeed(seed, 'macro-field'),
-      material: 'dark',
+      kind: 'spine',
+      anchor: routeAnchor(start.id, 0.62, -36, -11),
+      size: [4.2, 5.5, carrierSpan],
+      material: 'edge',
+    },
+    {
+      kind: 'spine',
+      anchor: routeAnchor(start.id, 0.62, 36, -11),
+      size: [4.2, 5.5, carrierSpan],
+      material: 'edge',
+    },
+    {
+      kind: 'overpass',
+      anchor: routeAnchor(start.id, 0.48, 0, 0, -11),
+      width: 76,
+      height: 2.4,
+      depth: 5,
+      material: 'edge',
+    },
+    {
+      kind: 'overpass',
+      anchor: routeAnchor(start.id, 0.76, 0, 0, -11),
+      width: 76,
+      height: 2.4,
+      depth: 5,
+      material: 'edge',
     },
     {
       kind: 'cylinder',
-      anchor: routeAnchor(start.id, 0.64, -27, -8, 12),
-      radius: randomBetween(random, 7, 10),
+      anchor: routeAnchor(start.id, 0.64, -34, -4, 12),
+      radius: cylinderRadius,
       length: randomBetween(random, 34, 48),
       material: 'ceramic',
       rotation: [0.08, -0.18, 0],
     },
     {
       kind: 'repeat',
-      anchor: routeAnchor(start.id, 0.72, 27, -2, 18),
-      count: 8,
+      anchor: routeAnchor(start.id, 0.69, 34, -2, 18),
+      count: Math.max(6, Math.round(8 * density)),
       spacing: 4.2,
-      size: [5, 2.2, 24],
+      size: [7.5, 2.2, 24],
       axis: 'up',
       material: 'edge',
       rotation: [0, 0.12, 0.03],
+    },
+    {
+      kind: 'decorative-route',
+      anchor: routeAnchor(start.id, 0.64),
+      points: [
+        [-BACKBONE_RIGHT, BACKBONE_UP, -8],
+        [-28, -7, -2],
+        [-36, -11, 4],
+      ],
+      radius: 0.55,
+      material: 'conductor',
+    },
+    {
+      kind: 'decorative-route',
+      anchor: routeAnchor(start.id, 0.69),
+      points: [
+        [BACKBONE_RIGHT, BACKBONE_UP, -8],
+        [29, -7, -2],
+        [36, -11, 4],
+      ],
+      radius: 0.55,
+      material: 'conductor',
     },
   );
 }

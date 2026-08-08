@@ -57,3 +57,4 @@ const runtime = new RunRuntime(world, architecture, {
 });
 
 runtime.start();
+document.getElementById('boot-status')?.remove();

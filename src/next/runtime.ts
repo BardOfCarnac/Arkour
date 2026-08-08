@@ -4,7 +4,7 @@ import { generateRouteFirstArchitecture } from '../architecture/route-first';
 import { createRouteFrame, sampleRouteFrameAtDistance } from '../run/route-frame';
 import { RuntimeRoute } from '../run/route';
 import { addScenePlan } from '../run/scenery';
-import type { EncounterSpec, RunWorld, Vec3 } from '../run/types';
+import type { EncounterSpec, JunctionSpec, RunWorld, Vec3 } from '../run/types';
 
 interface AcceptanceElements {
   canvasHost: HTMLElement;
@@ -14,6 +14,9 @@ interface AcceptanceElements {
   playButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
   scrub: HTMLInputElement;
+  routeChoice: HTMLElement;
+  routeChoiceTitle: HTMLElement;
+  routeChoiceButtons: HTMLElement;
 }
 
 interface TourLeg {
@@ -39,6 +42,7 @@ const SURFACE_Y = 8;
 const MIRROR_FLOOR_RISE = 3.2;
 const MIRROR_HORIZONTAL_STEP = MIRROR_FLOOR_RISE * Math.sqrt(3);
 const MIRROR_AZIMUTH = Math.PI / 8;
+const JUNCTION_PAUSE_DISTANCE = 7;
 
 const cyan = 0x58f0d8;
 const cyanDim = 0x235a58;
@@ -197,7 +201,11 @@ function addRouteRails(scene: THREE.Scene, routes: Map<string, RuntimeRoute>): v
   }
 }
 
-function buildDefaultTour(world: RunWorld, routes: Map<string, RuntimeRoute>): TourLeg[] {
+function buildTour(
+  world: RunWorld,
+  routes: Map<string, RuntimeRoute>,
+  selectedExits: ReadonlyMap<string, string>,
+): TourLeg[] {
   const selected: RuntimeRoute[] = [];
   const visited = new Set<string>();
   let routeId: string | undefined = world.startRoute;
@@ -207,8 +215,10 @@ function buildDefaultTour(world: RunWorld, routes: Map<string, RuntimeRoute>): T
     const route = routes.get(routeId);
     if (!route) break;
     selected.push(route);
+
     const junction = world.junctions.find((candidate) => candidate.incomingRoute === routeId);
-    routeId = junction?.defaultExit;
+    if (!junction) break;
+    routeId = selectedExits.get(junction.id) ?? junction.defaultExit;
   }
 
   const total = selected.reduce((sum, route) => sum + route.length, 0);
@@ -243,9 +253,9 @@ function nearestEncounterDistance(route: RuntimeRoute, distance: number): number
 }
 
 /**
- * The red route remains hard and angular. The camera gets a separate smooth
- * spline that wings around the reserved route corridor between nodes, then
- * moves back toward the centreline as it approaches each major component.
+ * The rail stays hard and angular. The camera is a separate deterministic
+ * spline which arcs around that rail but always returns to the known-safe
+ * approach line at major components.
  */
 function buildArcCameraTour(legs: TourLeg[]): ArcCameraTour {
   const totalLength = legs.reduce((sum, leg) => sum + leg.route.length, 0);
@@ -293,7 +303,17 @@ function nextEncounter(route: RuntimeRoute, distance: number): EncounterSpec | u
     .find((encounter) => encounter.at * route.length >= distance - 2.5);
 }
 
-function stageFor(timeline: number, sample: TourSample | null): { title: string; detail: string } {
+function stageFor(
+  timeline: number,
+  sample: TourSample | null,
+  pendingJunction?: JunctionSpec,
+): { title: string; detail: string } {
+  if (pendingJunction) {
+    return {
+      title: 'CHOOSE ROUTE',
+      detail: pendingJunction.exits.map((exit) => exit.label.toUpperCase()).join(' // '),
+    };
+  }
   if (timeline < 0.16) return { title: 'SURFACE APPROACH', detail: 'CAMERAS, MAIN // SCHEMATIC GRAPH MIRROR' };
   if (timeline < SURFACE_END) return { title: 'JACK-IN DESCENT', detail: 'HARD ROUTE // CURVED CAMERA APPROACH' };
   if (!sample) return { title: 'DESCENT', detail: 'ROUTE-FIRST CITY' };
@@ -307,30 +327,17 @@ function stageFor(timeline: number, sample: TourSample | null): { title: string;
   return { title: 'VERTICAL TRANSIT', detail: sample.route.label.toUpperCase() };
 }
 
-function applyPointerLook(
-  cameraPosition: THREE.Vector3,
-  target: THREE.Vector3,
-  pointerRight: number,
-  pointerUp: number,
-): void {
-  const forward = target.clone().sub(cameraPosition).normalize();
-  const referenceUp = Math.abs(forward.y) > 0.94
-    ? new THREE.Vector3(0, 0, 1)
-    : new THREE.Vector3(0, 1, 0);
-  const right = new THREE.Vector3().crossVectors(referenceUp, forward).normalize();
-  const up = new THREE.Vector3().crossVectors(forward, right).normalize();
-  target.addScaledVector(right, pointerRight).addScaledVector(up, pointerUp);
-}
-
 export class NextAcceptanceRuntime {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(70, 1, 0.16, 950);
   private readonly renderer: THREE.WebGLRenderer;
   private readonly routes = new Map<string, RuntimeRoute>();
-  private readonly tour: TourLeg[];
-  private readonly undergroundCamera: THREE.CatmullRomCurve3;
-  private readonly undergroundLook: THREE.CatmullRomCurve3;
   private readonly clock = new THREE.Clock();
+  private readonly selectedExits = new Map<string, string>();
+  private tour: TourLeg[] = [];
+  private undergroundCamera!: THREE.CatmullRomCurve3;
+  private undergroundLook!: THREE.CatmullRomCurve3;
+  private pendingJunction?: JunctionSpec;
   private readonly surfaceCamera = new THREE.CatmullRomCurve3([
     new THREE.Vector3(-52, 15.5, -34),
     new THREE.Vector3(-39, 14.2, -25),
@@ -350,19 +357,14 @@ export class NextAcceptanceRuntime {
 
   private timeline = 0;
   private playing = true;
-  private pointerX = 0;
-  private pointerY = 0;
 
   constructor(
-    world: RunWorld,
+    private readonly world: RunWorld,
     document: ArchitectureDocument,
     private readonly elements: AcceptanceElements,
   ) {
     for (const spec of world.routes) this.routes.set(spec.id, new RuntimeRoute(spec));
-    this.tour = buildDefaultTour(world, this.routes);
-    const arcTour = buildArcCameraTour(this.tour);
-    this.undergroundCamera = arcTour.camera;
-    this.undergroundLook = arcTour.look;
+    this.rebuildTour();
 
     this.scene.background = new THREE.Color(0x020406);
     this.scene.fog = new THREE.FogExp2(0x020607, 0.0068);
@@ -383,11 +385,11 @@ export class NextAcceptanceRuntime {
     glow.position.set(0, SURFACE_Y + 1.5, 0);
     this.scene.add(glow);
 
+    this.hideRouteChoice();
     this.elements.playButton.addEventListener('click', this.togglePlay);
     this.elements.resetButton.addEventListener('click', this.reset);
     this.elements.scrub.addEventListener('input', this.scrub);
     window.addEventListener('resize', this.resize);
-    window.addEventListener('pointermove', this.pointerMove, { passive: true });
     window.addEventListener('keydown', this.keydown);
     this.resize();
   }
@@ -400,8 +402,14 @@ export class NextAcceptanceRuntime {
     this.renderer.setAnimationLoop(null);
     this.renderer.dispose();
     window.removeEventListener('resize', this.resize);
-    window.removeEventListener('pointermove', this.pointerMove);
     window.removeEventListener('keydown', this.keydown);
+  }
+
+  private rebuildTour(): void {
+    this.tour = buildTour(this.world, this.routes, this.selectedExits);
+    const arcTour = buildArcCameraTour(this.tour);
+    this.undergroundCamera = arcTour.camera;
+    this.undergroundLook = arcTour.look;
   }
 
   private tick = (): void => {
@@ -414,24 +422,100 @@ export class NextAcceptanceRuntime {
       }
     }
 
-    const sample = this.timeline >= SURFACE_END
+    let sample = this.timeline >= SURFACE_END
       ? sampleTour(this.tour, (this.timeline - SURFACE_END) / (1 - SURFACE_END))
       : null;
+
+    if (sample && this.pauseForRouteChoice(sample)) {
+      sample = sampleTour(this.tour, (this.timeline - SURFACE_END) / (1 - SURFACE_END));
+    }
 
     this.updateCamera(sample);
     this.updateHud(sample);
     this.renderer.render(this.scene, this.camera);
   };
 
-  private updateCamera(sample: TourSample | null): void {
-    const pointerRight = this.pointerX * 0.42;
-    const pointerUp = this.pointerY * 0.2;
+  private pauseForRouteChoice(sample: TourSample): boolean {
+    if (this.pendingJunction) return false;
+    const junction = this.world.junctions.find((candidate) => (
+      candidate.incomingRoute === sample.route.id && !this.selectedExits.has(candidate.id)
+    ));
+    if (!junction) return false;
 
+    const junctionDistance = junction.at * sample.route.length;
+    const remaining = junctionDistance - sample.distance;
+    const triggerDistance = Math.min(JUNCTION_PAUSE_DISTANCE, junction.approachDistance);
+    if (remaining > triggerDistance) return false;
+
+    this.timeline = this.timelineForJunction(junction);
+    this.playing = false;
+    this.pendingJunction = junction;
+    this.elements.playButton.textContent = 'Choose route';
+    this.showRouteChoice(junction);
+    return true;
+  }
+
+  private timelineForJunction(junction: JunctionSpec): number {
+    const leg = this.tour.find((candidate) => candidate.route.id === junction.incomingRoute);
+    if (!leg) return this.timeline;
+    const undergroundProgress = leg.start + (leg.end - leg.start) * junction.at;
+    return SURFACE_END + undergroundProgress * (1 - SURFACE_END);
+  }
+
+  private showRouteChoice(junction: JunctionSpec): void {
+    const incoming = this.routes.get(junction.incomingRoute);
+    const encounter = incoming?.spec.encounters
+      ?.slice()
+      .sort((a, b) => Math.abs(a.at - junction.at) - Math.abs(b.at - junction.at))[0];
+
+    this.elements.routeChoiceTitle.textContent = `${encounter?.label ?? 'JUNCTION'} // CHOOSE ROUTE`;
+    this.elements.routeChoiceButtons.replaceChildren();
+
+    junction.exits.forEach((exit, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'route-choice-button';
+      button.setAttribute('aria-label', `Choose ${exit.label} route`);
+
+      const direction = document.createElement('strong');
+      direction.textContent = exit.label.toUpperCase();
+      const route = this.routes.get(exit.routeId);
+      const destination = document.createElement('small');
+      destination.textContent = route?.label ?? `ROUTE ${index + 1}`;
+
+      button.append(direction, destination);
+      button.addEventListener('click', () => this.chooseExit(junction, exit.routeId));
+      this.elements.routeChoiceButtons.appendChild(button);
+    });
+
+    this.elements.routeChoice.hidden = false;
+  }
+
+  private hideRouteChoice(): void {
+    this.elements.routeChoice.hidden = true;
+    this.elements.routeChoiceButtons.replaceChildren();
+  }
+
+  private chooseExit(junction: JunctionSpec, routeId: string): void {
+    if (!junction.exits.some((exit) => exit.routeId === routeId)) return;
+
+    this.selectedExits.set(junction.id, routeId);
+    this.pendingJunction = undefined;
+    this.hideRouteChoice();
+    this.rebuildTour();
+
+    // Recalculate the junction's position against the newly selected complete
+    // path, then start just beyond it so the next frame is already on the exit.
+    this.timeline = Math.min(1, this.timelineForJunction(junction) + 0.001);
+    this.playing = true;
+    this.elements.playButton.textContent = 'Pause';
+  }
+
+  private updateCamera(sample: TourSample | null): void {
     if (!sample) {
       const u = THREE.MathUtils.smoothstep(this.timeline / SURFACE_END, 0, 1);
       this.surfaceCamera.getPointAt(u, this.camera.position);
       const target = this.surfaceLook.getPointAt(THREE.MathUtils.clamp(u * 1.08, 0, 1));
-      applyPointerLook(this.camera.position, target, pointerRight, pointerUp);
       this.camera.lookAt(target);
       return;
     }
@@ -439,12 +523,11 @@ export class NextAcceptanceRuntime {
     const u = THREE.MathUtils.clamp((this.timeline - SURFACE_END) / (1 - SURFACE_END), 0, 1);
     this.undergroundCamera.getPointAt(u, this.camera.position);
     const target = this.undergroundLook.getPointAt(Math.min(1, u + 0.018));
-    applyPointerLook(this.camera.position, target, pointerRight, pointerUp);
     this.camera.lookAt(target);
   }
 
   private updateHud(sample: TourSample | null): void {
-    const stage = stageFor(this.timeline, sample);
+    const stage = stageFor(this.timeline, sample, this.pendingJunction);
     this.elements.stage.textContent = stage.title;
     this.elements.detail.textContent = stage.detail;
     this.elements.progress.style.width = `${this.timeline * 100}%`;
@@ -452,6 +535,7 @@ export class NextAcceptanceRuntime {
   }
 
   private togglePlay = (): void => {
+    if (this.pendingJunction) return;
     if (this.timeline >= 1) {
       this.timeline = 0;
       this.playing = true;
@@ -463,23 +547,29 @@ export class NextAcceptanceRuntime {
   };
 
   private reset = (): void => {
+    this.selectedExits.clear();
+    this.pendingJunction = undefined;
+    this.hideRouteChoice();
+    this.rebuildTour();
     this.timeline = 0;
     this.playing = true;
     this.elements.playButton.textContent = 'Pause';
   };
 
   private scrub = (): void => {
+    this.pendingJunction = undefined;
+    this.hideRouteChoice();
     this.timeline = Number(this.elements.scrub.value);
     this.playing = false;
     this.elements.playButton.textContent = 'Run';
   };
 
-  private pointerMove = (event: PointerEvent): void => {
-    this.pointerX = (event.clientX / Math.max(window.innerWidth, 1) - 0.5) * 2;
-    this.pointerY = -(event.clientY / Math.max(window.innerHeight, 1) - 0.5) * 2;
-  };
-
   private keydown = (event: KeyboardEvent): void => {
+    if (this.pendingJunction && /^[1-9]$/.test(event.key)) {
+      const exit = this.pendingJunction.exits[Number(event.key) - 1];
+      if (exit) this.chooseExit(this.pendingJunction, exit.routeId);
+      return;
+    }
     if (event.code === 'Space') {
       event.preventDefault();
       this.togglePlay();

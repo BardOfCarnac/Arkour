@@ -61,7 +61,8 @@ button, input { font: inherit; }
 .controls button:hover { border-color: #58f0d8; }
 .controls input[type="range"] { width: min(320px, 34vw); accent-color: #58f0d8; }
 
-.mobile-controls { display: none; }
+.mobile-controls,
+.mobile-steering { display: none; }
 
 .corner-mark {
   position: absolute;
@@ -82,6 +83,72 @@ button, input { font: inherit; }
   .note-panel { display: none; }
   .corner-mark { display: none; }
   .desktop-controls { display: none; }
+
+  .mobile-steering {
+    pointer-events: auto;
+    position: absolute;
+    left: max(10px, env(safe-area-inset-left));
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 118px);
+    display: block;
+    width: 166px;
+    height: 182px;
+    padding: 9px;
+    border: 1px solid rgba(80, 241, 216, .28);
+    border-radius: 12px;
+    background: rgba(2, 7, 8, .74);
+    backdrop-filter: blur(9px);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, .3);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-steering-label {
+    display: block;
+    height: 20px;
+    color: rgba(88, 240, 216, .75);
+    text-align: center;
+    font: 700 8px/20px ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .2em;
+  }
+
+  .steer-grid {
+    position: relative;
+    width: 146px;
+    height: 146px;
+  }
+
+  .steer-button {
+    position: absolute;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: 1px solid rgba(80, 241, 216, .38);
+    border-radius: 10px;
+    background: rgba(7, 16, 18, .96);
+    color: #e9fffb;
+    font: 700 20px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    touch-action: none;
+  }
+
+  .steer-button:active {
+    border-color: #58f0d8;
+    background: rgba(14, 37, 37, .98);
+    transform: scale(.97);
+  }
+
+  .steer-up { left: 49px; top: 0; }
+  .steer-left { left: 0; top: 49px; }
+  .steer-centre {
+    left: 49px;
+    top: 49px;
+    border-color: rgba(255, 64, 84, .55);
+    color: #ff6678;
+    font-size: 22px;
+  }
+  .steer-right { left: 98px; top: 49px; }
+  .steer-down { left: 49px; top: 98px; }
 
   .mobile-controls {
     pointer-events: auto;
@@ -149,4 +216,10 @@ button, input { font: inherit; }
   .title-panel span { display: none; }
   .stage-panel .eyebrow { display: none; }
   .mobile-button-row button { min-height: 58px; }
+  .mobile-steering {
+    width: 156px;
+    height: 172px;
+    transform: scale(.94);
+    transform-origin: bottom left;
+  }
 }

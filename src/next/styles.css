@@ -27,7 +27,8 @@ button, input { font: inherit; }
 
 .stage-panel { position: absolute; right: 16px; top: 16px; width: min(350px, 42vw); padding: 12px 14px; }
 .stage-panel .eyebrow,
-.route-choice .eyebrow { display: block; color: #69827e; font: 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; }
+.route-choice .eyebrow,
+.encounter-gate .eyebrow { display: block; color: #69827e; font: 8px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; }
 .stage-panel strong { display: block; margin-top: 6px; font: 500 15px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .09em; }
 .stage-panel small { display: block; margin-top: 5px; color: #55d9c7; font: 8px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
 .progress { height: 2px; margin-top: 10px; overflow: hidden; background: rgba(88, 240, 216, .1); }
@@ -36,7 +37,8 @@ button, input { font: inherit; }
 .note-panel { position: absolute; left: 16px; bottom: 16px; width: min(310px, 34vw); padding: 10px 12px; color: #73908b; font: 8px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .05em; }
 .note-panel b { color: #d8fff8; font-weight: 500; }
 
-.route-choice {
+.route-choice,
+.encounter-gate {
   pointer-events: auto;
   position: absolute;
   left: 50%;
@@ -48,14 +50,41 @@ button, input { font: inherit; }
   background: linear-gradient(180deg, rgba(11, 6, 9, .94), rgba(3, 8, 10, .9));
   box-shadow: 0 14px 44px rgba(0, 0, 0, .46), 0 0 28px rgba(255, 64, 84, .08);
 }
-.route-choice[hidden] { display: none !important; }
-.route-choice > strong {
+.route-choice[hidden],
+.encounter-gate[hidden] { display: none !important; }
+.route-choice > strong,
+.encounter-gate > strong {
   display: block;
   margin-top: 6px;
   color: #f2fffc;
   font: 600 13px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: .1em;
 }
+.encounter-gate > small {
+  display: block;
+  margin-top: 6px;
+  color: #a2bdb8;
+  font: 8px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .08em;
+}
+.encounter-continue {
+  width: 100%;
+  min-height: 54px;
+  margin-top: 11px;
+  border: 1px solid rgba(88, 240, 216, .64);
+  border-radius: 7px;
+  background: #58f0d8;
+  color: #06100f;
+  cursor: pointer;
+  font: 800 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .15em;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.encounter-continue:hover,
+.encounter-continue:focus-visible { background: #75f7e3; outline: none; }
+.encounter-continue:active { transform: translateY(1px); }
+
 .route-choice-buttons {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -142,7 +171,8 @@ button, input { font: inherit; }
   .corner-mark { display: none; }
   .desktop-controls { display: none; }
 
-  .route-choice {
+  .route-choice,
+  .encounter-gate {
     left: max(10px, env(safe-area-inset-left));
     right: max(10px, env(safe-area-inset-right));
     bottom: calc(max(10px, env(safe-area-inset-bottom)) + 118px);
@@ -151,11 +181,13 @@ button, input { font: inherit; }
     padding: 11px;
   }
 
-  .route-choice > strong { font-size: 12px; }
+  .route-choice > strong,
+  .encounter-gate > strong { font-size: 12px; }
   .route-choice-buttons { grid-template-columns: repeat(3, 1fr); gap: 7px; }
   .route-choice-button { min-width: 0; min-height: 62px; padding: 10px 8px; text-align: center; }
   .route-choice-button strong { font-size: 12px; }
   .route-choice-button small { font-size: 7px; }
+  .encounter-continue { min-height: 62px; font-size: 13px; }
 
   .mobile-controls {
     pointer-events: auto;

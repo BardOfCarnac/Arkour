@@ -1,0 +1,15 @@
+{
+  "format": "arkour-black-ice-glyph",
+  "version": 1,
+  "generator": "five-arm-starfish",
+  "curve": 0.42,
+  "core": 0.43,
+  "fill": 0.12,
+  "points": {
+    "arm0": { "x": 0, "y": -126, "z": 0 },
+    "arm1": { "x": 120, "y": -39, "z": 0 },
+    "arm2": { "x": 74, "y": 103, "z": 0 },
+    "arm3": { "x": -74, "y": 103, "z": 0 },
+    "arm4": { "x": -120, "y": -39, "z": 0 }
+  }
+}

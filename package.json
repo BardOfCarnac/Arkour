@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node --check public/route-first-city/runner-view.js && node --check public/runner-pose-lab/app.js && node --check public/runner-pose-lab/mobile-drawer.js && tsc --noEmit && vite build",
+    "build": "node --check public/route-first-city/runner-view.js && node --check public/runner-pose-lab/app.js && node --check public/runner-pose-lab/mobile-drawer.js && node --check public/black-ice-glyph-editor/editor.js && tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

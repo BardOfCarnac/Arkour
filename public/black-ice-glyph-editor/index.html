@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#030506" />
+  <title>Arkour — Black ICE Glyph Editor</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.179.1/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <main class="editor-shell">
+    <header class="topbar">
+      <div>
+        <strong>ARKOUR // BLACK ICE GLYPH</strong>
+        <span>5-arm 3D point editor · starfish seed</span>
+      </div>
+      <button id="tools-open" type="button">TOOLS</button>
+    </header>
+
+    <section class="workspace" aria-label="Black ICE glyph editor">
+      <canvas id="editor" aria-label="Editable five-point Black ICE glyph"></canvas>
+      <div class="view-chip" id="view-chip">ORBIT</div>
+      <aside class="point-readout" aria-live="polite">
+        <span class="eyebrow">SELECTED ARM</span>
+        <strong id="point-name">ARM 1 / CROWN</strong>
+        <span id="point-coords">X 0 · Y -125 · Z 0</span>
+      </aside>
+      <nav class="view-bar" aria-label="3D view controls">
+        <button class="view-button" data-view="front" type="button">FRONT</button>
+        <button class="view-button" data-view="side" type="button">SIDE</button>
+        <button class="view-button" data-view="top" type="button">TOP</button>
+        <button class="view-button active" data-view="orbit" type="button">ORBIT</button>
+      </nav>
+    </section>
+
+    <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+    <aside id="tools-drawer" class="tools-drawer" aria-label="Black ICE glyph tools" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <span class="eyebrow">FIVE-POINT GENERATOR</span>
+          <strong>STARFISH TOOLS</strong>
+        </div>
+        <button id="tools-close" type="button">CLOSE</button>
+      </div>
+
+      <label class="control-row depth-control">
+        <span>SELECTED DEPTH <output id="depth-value">0</output></span>
+        <input id="depth" type="range" min="-150" max="150" step="1" value="0" />
+      </label>
+      <label class="control-row">
+        <span>CORE / ARM WIDTH <output id="core-value">0.43</output></span>
+        <input id="core" type="range" min="0.18" max="0.72" step="0.01" value="0.43" />
+      </label>
+      <label class="control-row">
+        <span>CURVE <output id="curve-value">0.42</output></span>
+        <input id="curve" type="range" min="0" max="1" step="0.01" value="0.42" />
+      </label>
+      <label class="control-row">
+        <span>FILL <output id="fill-value">0.12</output></span>
+        <input id="fill" type="range" min="0" max="0.4" step="0.01" value="0.12" />
+      </label>
+
+      <div class="button-grid">
+        <button id="flatten" type="button">FLATTEN Z</button>
+        <button id="reset" type="button">RESET STARFISH</button>
+        <button id="copy-json" type="button">COPY JSON</button>
+        <button id="download-json" type="button">DOWNLOAD JSON</button>
+      </div>
+
+      <p class="help">The five handles are the five arm tips. The inward valleys are generated automatically from neighbouring arms, so you can pull the creature into asymmetric Black ICE shapes without adding more control points. Front drags X/Y, Side drags Z/Y, Top drags X/Z. Orbit mode moves a handle in a camera-facing plane.</p>
+    </aside>
+  </main>
+
+  <script type="module" src="./editor.js"></script>
+</body>
+</html>

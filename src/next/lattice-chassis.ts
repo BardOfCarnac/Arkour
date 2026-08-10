@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { objectIntersectsKeepout, type SpatialKeepout } from '../run/keepout';
 import type { RouteSpec, RunWorld, Vec3 } from '../run/types';
 
 const CELL_X = 18;
@@ -38,23 +39,51 @@ function snapHex(point: THREE.Vector3): THREE.Vector3 {
   );
 }
 
-function addBeam(
-  parent: THREE.Group,
+function createBeam(
   from: THREE.Vector3,
   to: THREE.Vector3,
   material: THREE.Material,
   radius: number,
-): void {
+): THREE.Mesh | undefined {
   const delta = to.clone().sub(from);
   const length = delta.length();
-  if (length < 1) return;
+  if (length < 1) return undefined;
   const beam = new THREE.Mesh(
     new THREE.CylinderGeometry(radius, radius, length, 7, 1, false),
     material,
   );
   beam.position.copy(from).add(to).multiplyScalar(0.5);
   beam.quaternion.setFromUnitVectors(Y_AXIS, delta.normalize());
-  parent.add(beam);
+  return beam;
+}
+
+function addAdmittedBeam(
+  parent: THREE.Group,
+  from: THREE.Vector3,
+  to: THREE.Vector3,
+  material: THREE.Material,
+  radius: number,
+  keepout: SpatialKeepout,
+  trimTowardEnd = false,
+): boolean {
+  const tryBeam = (candidateTo: THREE.Vector3): boolean => {
+    const beam = createBeam(from, candidateTo, material, radius);
+    if (!beam) return false;
+    if (objectIntersectsKeepout(beam, keepout)) return false;
+    parent.add(beam);
+    return true;
+  };
+
+  if (tryBeam(to)) return true;
+  if (!trimTowardEnd) return false;
+
+  // Standoffs deliberately aim back toward the route. If the final part would
+  // invade the Runner/camera/hold reservation, shorten the structural tie rather
+  // than admitting an illegal brace or deleting the useful outer section.
+  for (const fraction of [0.86, 0.72, 0.58, 0.44]) {
+    if (tryBeam(from.clone().lerp(to, fraction))) return true;
+  }
+  return false;
 }
 
 function routeEndpoints(route: RouteSpec): { from: THREE.Vector3; to: THREE.Vector3 }[] {
@@ -69,12 +98,11 @@ function addRouteBus(
   route: RouteSpec,
   routeIndex: number,
   materials: { bus: THREE.Material; conductor: THREE.Material; brace: THREE.Material },
+  keepout: SpatialKeepout,
 ): void {
   const segments = routeEndpoints(route);
   segments.forEach((segment, index) => {
     const h = hashString(`${route.id}:${routeIndex}:${index}`);
-    // Keep the chassis intentionally discontinuous. The route remains visible
-    // and no repeated frame cadence can turn this into a tunnel.
     if ((h & 3) === 0) return;
 
     const axis = HEX_AXES[h % HEX_AXES.length] ?? HEX_AXES[0];
@@ -82,35 +110,30 @@ function addRouteBus(
     const clearance = BUS_CLEARANCE + ((h >>> 5) % 4) * 4.5;
     const offset = axis.clone().multiplyScalar(clearance * side);
 
-    const rawFrom = segment.from.clone().add(offset);
-    const rawTo = segment.to.clone().add(offset);
-    const busFrom = snapHex(rawFrom);
-    const busTo = snapHex(rawTo);
+    const busFrom = snapHex(segment.from.clone().add(offset));
+    const busTo = snapHex(segment.to.clone().add(offset));
 
-    addBeam(group, busFrom, busTo, materials.bus, 0.9);
+    addAdmittedBeam(group, busFrom, busTo, materials.bus, 0.9, keepout);
 
-    // A second, thinner conductor occasionally shares the same span but at a
-    // neighbouring lattice layer. It reads as a bus bundle rather than a wall.
     if ((h & 2) !== 0) {
       const lift = ((h & 16) === 0 ? -1 : 1) * LAYER_Y * 0.34;
-      addBeam(
+      addAdmittedBeam(
         group,
         busFrom.clone().add(new THREE.Vector3(0, lift, 0)),
         busTo.clone().add(new THREE.Vector3(0, lift, 0)),
         materials.conductor,
         0.38,
+        keepout,
       );
     }
 
-    // Sparse standoffs show that the route and chassis belong to the same
-    // machine without enclosing the traveller. Only one end is tied back.
     const tieTo = ((h & 4) === 0 ? segment.from : segment.to);
     const tieFrom = ((h & 4) === 0 ? busFrom : busTo);
     if (tieFrom.distanceTo(tieTo) > 12) {
       const halfway = tieFrom.clone().lerp(tieTo, 0.58);
       const displaced = halfway.clone().add(axis.clone().multiplyScalar(side * 5));
-      addBeam(group, tieFrom, displaced, materials.brace, 0.5);
-      addBeam(group, displaced, tieTo.clone().lerp(displaced, 0.16), materials.brace, 0.44);
+      addAdmittedBeam(group, tieFrom, displaced, materials.brace, 0.5, keepout);
+      addAdmittedBeam(group, displaced, tieTo, materials.brace, 0.44, keepout, true);
     }
   });
 }
@@ -119,6 +142,7 @@ function addJunctionWeb(
   group: THREE.Group,
   world: RunWorld,
   materials: { bus: THREE.Material; conductor: THREE.Material; brace: THREE.Material },
+  keepout: SpatialKeepout,
 ): void {
   for (const junction of world.junctions) {
     if (junction.exits.length < 2) continue;
@@ -140,27 +164,30 @@ function addJunctionWeb(
       anchors.push(snapHex(probe.add(axis.clone().multiplyScalar(BUS_CLEARANCE * 1.22 * side))));
     }
 
-    // One open truss across the branch fan is enough to make the routes feel
-    // structurally related. We deliberately do not close the polygon.
     for (let index = 0; index < anchors.length - 1; index += 1) {
       const a = anchors[index];
       const b = anchors[index + 1];
       if (!a || !b) continue;
-      addBeam(group, a, b, materials.bus, 1.05);
+      addAdmittedBeam(group, a, b, materials.bus, 1.05, keepout);
       const mid = a.clone().lerp(b, 0.5).add(new THREE.Vector3(0, LAYER_Y * 0.52, 0));
-      addBeam(group, a, mid, materials.brace, 0.5);
-      addBeam(group, mid, b, materials.brace, 0.5);
+      addAdmittedBeam(group, a, mid, materials.brace, 0.5, keepout);
+      addAdmittedBeam(group, mid, b, materials.brace, 0.5, keepout);
     }
   }
 }
 
 /**
- * Adds only the structural connective tissue missing from the lattice volume:
- * long buses, occasional standoffs and open branch trusses. It is deliberately
- * sparse, absolute/world-space, and snapped to the same 60-degree lattice as
- * the city. There are no repeated ribs or enclosing route frames.
+ * Sparse structural connective tissue in shared world space. Every proposed
+ * beam now goes through the same spatial admission authority as ordinary
+ * scenery. Unsafe branch trusses are vetoed; route-facing standoffs may be
+ * shortened to preserve their outer structural read without entering the
+ * Runner, camera, or physical-hold corridor.
  */
-export function addSparseLatticeChassis(scene: THREE.Scene, world: RunWorld): THREE.Group {
+export function addSparseLatticeChassis(
+  scene: THREE.Scene,
+  world: RunWorld,
+  keepout: SpatialKeepout,
+): THREE.Group {
   const group = new THREE.Group();
   group.name = 'arkour-sparse-lattice-chassis';
 
@@ -170,8 +197,8 @@ export function addSparseLatticeChassis(scene: THREE.Scene, world: RunWorld): TH
     brace: new THREE.MeshStandardMaterial({ color: 0x17272d, roughness: 0.64, metalness: 0.55 }),
   };
 
-  world.routes.forEach((route, index) => addRouteBus(group, route, index, materials));
-  addJunctionWeb(group, world, materials);
+  world.routes.forEach((route, index) => addRouteBus(group, route, index, materials, keepout));
+  addJunctionWeb(group, world, materials, keepout);
 
   scene.add(group);
   return group;

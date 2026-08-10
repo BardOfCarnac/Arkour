@@ -1,6 +1,7 @@
 import './styles.css';
 import { acceptanceArchitectureDocument } from '../architecture/document/acceptance';
 import { compileArchitectureDocument } from '../architecture/document/compile';
+import { attachLatticeFoundation } from './lattice-foundation';
 import { NextAcceptanceRuntime } from './runtime';
 import { attachRunnerEntity } from './runner';
 import { attachViewerMode } from './viewer';
@@ -16,11 +17,11 @@ app.innerHTML = `
     <div class="hud">
       <section class="panel title-panel">
         <strong>ARKOUR // RUN</strong>
-        <span>ArchitectureDocument → routes → node machines → chassis → vertical city</span>
+        <span>ArchitectureDocument → 60° routes → node forms → lattice volume → hold circuits</span>
       </section>
 
       <section class="panel stage-panel">
-        <span class="eyebrow">ROUTE-FIRST RUN</span>
+        <span class="eyebrow">LATTICE-VOLUME RUN</span>
         <strong id="stage">SURFACE APPROACH</strong>
         <small id="detail">EDITOR GRAPH MIRROR // ACCESS POINT AHEAD</small>
         <div class="progress"><i id="progress"></i></div>
@@ -32,7 +33,7 @@ app.innerHTML = `
       </section>
 
       <section id="encounter-gate" class="encounter-gate panel" aria-live="polite" hidden>
-        <span class="eyebrow">ENCOUNTER HOLD</span>
+        <span class="eyebrow">ENCOUNTER HOLD CIRCUIT</span>
         <strong id="encounter-title">NODE</strong>
         <small id="encounter-meta"></small>
         <button id="encounter-continue" class="encounter-continue" type="button">CONTINUE</button>
@@ -62,7 +63,7 @@ app.innerHTML = `
         </div>
       </section>
 
-      <span class="corner-mark">RUN // PRODUCTION</span>
+      <span class="corner-mark">RUN // LATTICE FOUNDATION</span>
     </div>
   </main>
 `;
@@ -100,6 +101,7 @@ const runtime = new NextAcceptanceRuntime(world, acceptanceArchitectureDocument,
 });
 attachRunnerEntity(runtime);
 const viewer = attachViewerMode(runtime, get('viewport'), get('spectator-viewport'));
+attachLatticeFoundation(runtime, world);
 
 const syncViewButtons = (): void => {
   const spectator = viewer.mode === 'spectator';

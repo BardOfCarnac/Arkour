@@ -43,6 +43,10 @@ export class PasswordBlockers {
     if (gate) gate.targetOpen = 1;
   }
 
+  resetAll(): void {
+    for (const gate of this.gates.values()) gate.targetOpen = 0;
+  }
+
   update(dt: number): void {
     for (const gate of this.gates.values()) {
       const smoothing = 1 - Math.exp(-dt * OPEN_SPEED);

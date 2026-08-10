@@ -19,7 +19,13 @@ function addWireAccents(root: THREE.Object3D): void {
   });
   const meshes: THREE.Mesh[] = [];
   root.traverse((object) => {
-    if (object instanceof THREE.Mesh && !(object instanceof THREE.InstancedMesh)) meshes.push(object);
+    if (
+      object instanceof THREE.Mesh
+      && !(object instanceof THREE.InstancedMesh)
+      && object.userData.noWireAccent !== true
+    ) {
+      meshes.push(object);
+    }
   });
   for (const mesh of meshes) {
     const lines = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 30), material);
@@ -29,8 +35,8 @@ function addWireAccents(root: THREE.Object3D): void {
 
 /**
  * Native runtime owner for the new Arkour foundation. World-space providers use
- * the same spatial admission authority as ordinary scenery; blocker attachments
- * then grow into the actual lattice/chassis meshes that survived generation.
+ * the same spatial admission authority as ordinary scenery. Password sealing is
+ * a separate hard gameplay boundary; lattice/chassis targets only decorate it.
  */
 export class LatticeFoundation {
   private readonly holds: HoldCircuitSystem;
@@ -53,8 +59,8 @@ export class LatticeFoundation {
     const lattice = addLatticeVolumeCity(scene, world, { seed: 4712, density: 0.18 });
     const chassis = addSparseLatticeChassis(scene, world, spatialKeepout);
 
-    // Attachment targets are sampled before decorative wire accents are added,
-    // so the solver binds nodes to real machinery rather than to edge lines.
+    // Targets are cosmetic integration points only. The Password seal itself is
+    // now guaranteed independently as a complete level boundary.
     const attachmentTargets = collectAttachmentTargets(lattice, chassis);
     const seals = addLatticeNodeSeals(
       scene,

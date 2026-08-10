@@ -2,6 +2,7 @@ import type { RouteAnchor, ScenePiece, ScenePlan } from '../run/scene-plan';
 import type { RouteSpec, RunWorld, Vec3 } from '../run/types';
 import type { ArchitectureOptions } from './generate';
 import { generateNodeComponents } from './node-components';
+import { generatePasswordSeals } from './password-seals';
 import { generateStructuralArchitecture } from './structural';
 import { generateVerticalCity } from './vertical-city';
 
@@ -49,11 +50,14 @@ function structuralPieceEntersNodeZone(piece: ScenePiece, world: RunWorld): bool
  * Production composition point for the reconciled Arkour architecture model.
  *
  * The route network remains the geometric authority in the runtime. Large node
- * components get first claim on the non-route space around encounters, the older
- * structural generator supplies continuous connective machinery between them,
- * and the vertical-city pass packs larger canyon/deck/utility districts into the
- * remaining route-relative space. Every proposal still has to pass the runtime's
- * all-route + camera keep-out admission rules before it enters the Three.js scene.
+ * components get first claim on the non-route space around encounters. Password
+ * sealing then extends blocking nodes into the nearby structural envelope before
+ * the older structural generator supplies continuous connective machinery and
+ * the vertical-city pass packs larger canyon/deck/utility districts into the
+ * remaining route-relative space. Every ordinary scenery proposal still has to
+ * pass the runtime's all-route + camera keep-out admission rules before it enters
+ * the Three.js scene; moving logical blockers are runtime encounter actors and are
+ * allowed to occupy the route until resolved.
  */
 export function generateRouteFirstArchitecture(
   world: RunWorld,
@@ -61,11 +65,12 @@ export function generateRouteFirstArchitecture(
 ): ScenePlan {
   const structural = generateStructuralArchitecture(world, options);
   const nodes = generateNodeComponents(world);
+  const passwordSeals = generatePasswordSeals(world);
   const city = generateVerticalCity(world, options);
   const connectiveStructure = structural.pieces.filter((piece) => !structuralPieceEntersNodeZone(piece, world));
 
   return {
     ...structural,
-    pieces: [...nodes, ...connectiveStructure, ...city],
+    pieces: [...nodes, ...passwordSeals, ...connectiveStructure, ...city],
   };
 }

@@ -1,0 +1,22 @@
+{
+  "format": "arkour-black-ice-glyph",
+  "version": 2,
+  "rig": "starfish-13",
+  "curve": 0.36,
+  "fill": 0.12,
+  "points": {
+    "frontTip": { "x": 0, "y": 0, "z": -126 },
+    "frontRightPit": { "x": 30, "y": 0, "z": -46 },
+    "rightFrontTip": { "x": 120, "y": 0, "z": -38 },
+    "rightRearPit": { "x": 44, "y": 0, "z": 22 },
+    "rearRightTip": { "x": 76, "y": 0, "z": 106 },
+    "rearPit": { "x": 0, "y": 0, "z": 52 },
+    "rearLeftTip": { "x": -76, "y": 0, "z": 106 },
+    "leftRearPit": { "x": -44, "y": 0, "z": 22 },
+    "leftFrontTip": { "x": -120, "y": 0, "z": -38 },
+    "frontLeftPit": { "x": -30, "y": 0, "z": -46 },
+    "core": { "x": 0, "y": 0, "z": 0 },
+    "innerFront": { "x": 0, "y": 0, "z": -40 },
+    "innerRear": { "x": 0, "y": 0, "z": 30 }
+  }
+}

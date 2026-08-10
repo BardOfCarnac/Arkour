@@ -11,6 +11,7 @@ const curveInput = document.querySelector('#curve');
 const curveValue = document.querySelector('#curve-value');
 const fillInput = document.querySelector('#fill');
 const fillValue = document.querySelector('#fill-value');
+const symmetryButton = document.querySelector('#symmetry');
 const flattenButton = document.querySelector('#flatten');
 const resetButton = document.querySelector('#reset');
 const copyButton = document.querySelector('#copy-json');
@@ -32,6 +33,18 @@ const INTERNAL_ORDER = ['core', 'innerFront', 'innerRear'];
 const POINT_ORDER = [...CONTOUR_ORDER, ...INTERNAL_ORDER];
 const TIP_KEYS = new Set(['frontTip', 'rightFrontTip', 'rearRightTip', 'rearLeftTip', 'leftFrontTip']);
 const PIT_KEYS = new Set(['frontRightPit', 'rightRearPit', 'rearPit', 'leftRearPit', 'frontLeftPit']);
+const CENTRELINE_KEYS = new Set(['frontTip', 'rearPit', 'core', 'innerFront', 'innerRear']);
+const MIRROR = {
+  frontRightPit: 'frontLeftPit',
+  frontLeftPit: 'frontRightPit',
+  rightFrontTip: 'leftFrontTip',
+  leftFrontTip: 'rightFrontTip',
+  rightRearPit: 'leftRearPit',
+  leftRearPit: 'rightRearPit',
+  rearRightTip: 'rearLeftTip',
+  rearLeftTip: 'rearRightTip',
+};
+const RIGHT_PAIR_KEYS = ['frontRightPit', 'rightFrontTip', 'rightRearPit', 'rearRightTip'];
 
 const POINT_LABELS = {
   frontTip: 'FRONT TIP',
@@ -60,6 +73,7 @@ const STARFISH_V2 = {
   format: 'arkour-black-ice-glyph',
   version: 2,
   rig: 'starfish-13',
+  symmetry: true,
   curve: 0.36,
   fill: 0.12,
   points: {
@@ -82,7 +96,6 @@ const STARFISH_V2 = {
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const mix = (a, b, t) => a + (b - a) * t;
-
 let state = { ...clone(STARFISH_V2), view: 'top' };
 let selectedPoint = 'frontTip';
 let activeDrag = null;
@@ -92,41 +105,45 @@ function pointKind(key) {
   if (PIT_KEYS.has(key)) return 'pit';
   return 'internal';
 }
-
 function midpoint(a, b) {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
 }
 function average(points) {
   const out = { x: 0, y: 0, z: 0 };
-  for (const point of points) {
-    out.x += point.x; out.y += point.y; out.z += point.z;
-  }
+  for (const point of points) { out.x += point.x; out.y += point.y; out.z += point.z; }
   const n = Math.max(1, points.length);
-  out.x /= n; out.y /= n; out.z /= n;
-  return out;
+  return { x: out.x / n, y: out.y / n, z: out.z / n };
 }
 function lerpPoint(a, b, t) {
   return { x: mix(a.x, b.x, t), y: mix(a.y, b.y, t), z: mix(a.z, b.z, t) };
 }
 
+function symmetrisePoints(points) {
+  for (const rightKey of RIGHT_PAIR_KEYS) {
+    const leftKey = MIRROR[rightKey];
+    const right = points[rightKey];
+    const left = points[leftKey];
+    const x = (Math.abs(right.x) + Math.abs(left.x)) / 2;
+    const y = (right.y + left.y) / 2;
+    const z = (right.z + left.z) / 2;
+    points[rightKey] = { x, y, z };
+    points[leftKey] = { x: -x, y, z };
+  }
+  for (const key of CENTRELINE_KEYS) points[key].x = 0;
+  return points;
+}
+
 function migrateV1(saved) {
   if (!saved?.points) return null;
   const oldToNew = {
-    arm0: 'frontTip',
-    arm1: 'rightFrontTip',
-    arm2: 'rearRightTip',
-    arm3: 'rearLeftTip',
-    arm4: 'leftFrontTip',
+    arm0: 'frontTip', arm1: 'rightFrontTip', arm2: 'rearRightTip',
+    arm3: 'rearLeftTip', arm4: 'leftFrontTip',
   };
   const points = clone(STARFISH_V2.points);
   for (const [oldKey, newKey] of Object.entries(oldToNew)) {
-    const oldPoint = saved.points[oldKey];
-    if (!oldPoint) continue;
-    points[newKey] = {
-      x: Number(oldPoint.x) || 0,
-      y: Number(oldPoint.z) || 0,
-      z: Number(oldPoint.y) || 0,
-    };
+    const p = saved.points[oldKey];
+    if (!p) continue;
+    points[newKey] = { x: Number(p.x) || 0, y: Number(p.z) || 0, z: Number(p.y) || 0 };
   }
   const tips = ['frontTip', 'rightFrontTip', 'rearRightTip', 'rearLeftTip', 'leftFrontTip'].map((key) => points[key]);
   const center = average(tips);
@@ -137,17 +154,16 @@ function migrateV1(saved) {
     ['leftRearPit', 'rearLeftTip', 'leftFrontTip'],
     ['frontLeftPit', 'leftFrontTip', 'frontTip'],
   ];
-  for (const [pitKey, aKey, bKey] of pitSpecs) {
-    const edgeMid = midpoint(points[aKey], points[bKey]);
-    points[pitKey] = lerpPoint(center, edgeMid, 0.44);
-  }
+  for (const [pitKey, aKey, bKey] of pitSpecs) points[pitKey] = lerpPoint(center, midpoint(points[aKey], points[bKey]), 0.44);
   points.core = center;
   points.innerFront = lerpPoint(center, points.frontTip, 0.31);
   points.innerRear = lerpPoint(center, points.rearPit, 0.57);
+  symmetrisePoints(points);
   return {
     ...clone(STARFISH_V2),
     curve: Number(saved.curve ?? STARFISH_V2.curve),
     fill: Number(saved.fill ?? STARFISH_V2.fill),
+    symmetry: true,
     points,
     view: 'top',
   };
@@ -155,12 +171,12 @@ function migrateV1(saved) {
 
 function normaliseV2(saved) {
   if (saved?.format !== STARFISH_V2.format || saved?.version !== 2 || !saved?.points) return null;
+  const symmetry = saved.symmetry ?? true;
+  const points = { ...clone(STARFISH_V2.points), ...saved.points };
+  if (symmetry) symmetrisePoints(points);
   return {
-    ...clone(STARFISH_V2),
-    ...saved,
-    version: 2,
-    rig: 'starfish-13',
-    points: { ...clone(STARFISH_V2.points), ...saved.points },
+    ...clone(STARFISH_V2), ...saved,
+    version: 2, rig: 'starfish-13', symmetry, points,
     view: saved.view || 'top',
   };
 }
@@ -177,9 +193,7 @@ function loadState() {
       const migrated = migrateV1(JSON.parse(rawV1));
       if (migrated) state = migrated;
     }
-  } catch (error) {
-    console.warn('Could not load Black ICE glyph state', error);
-  }
+  } catch (error) { console.warn('Could not load Black ICE glyph state', error); }
 }
 function saveState() {
   try { localStorage.setItem(STORAGE_KEY_V2, JSON.stringify(state)); }
@@ -235,9 +249,7 @@ const grid = new THREE.GridHelper(520, 26, 0x1d4b47, 0x0b201f);
 grid.position.y = -1.5;
 scene.add(grid);
 const axesMaterial = new THREE.LineBasicMaterial({ color: 0x204e4a, transparent: true, opacity: 0.42 });
-function addAxis(a, b) {
-  scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), axesMaterial));
-}
+function addAxis(a, b) { scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), axesMaterial)); }
 addAxis(new THREE.Vector3(-180, 0, 0), new THREE.Vector3(180, 0, 0));
 addAxis(new THREE.Vector3(0, -100, 0), new THREE.Vector3(0, 100, 0));
 addAxis(new THREE.Vector3(0, 0, -180), new THREE.Vector3(0, 0, 180));
@@ -262,9 +274,7 @@ function disposeGroup(group) {
     });
   }
 }
-function lineLoopGeometry(points) {
-  return new THREE.BufferGeometry().setFromPoints([...points, points[0]]);
-}
+function lineLoopGeometry(points) { return new THREE.BufferGeometry().setFromPoints([...points, points[0]]); }
 function surfaceGeometry(contour) {
   const shape2 = contour.map((p) => new THREE.Vector2(p.x, p.z));
   const triangles = THREE.ShapeUtils.triangulateShape(shape2, []);
@@ -287,7 +297,6 @@ function structureGeometry() {
   for (const [a, b] of STRUCTURE_PAIRS) points.push(toWorld(state.points[a]), toWorld(state.points[b]));
   return new THREE.BufferGeometry().setFromPoints(points);
 }
-
 function buildGlyph() {
   disposeGroup(glyphGroup);
   const contour = smoothClosed(CONTOUR_ORDER.map((key) => toWorld(state.points[key])));
@@ -298,7 +307,6 @@ function buildGlyph() {
     new THREE.LineSegments(structureGeometry(), structureMaterial),
   );
 }
-
 function handleColor(key) {
   if (key === selectedPoint) return 0xffffff;
   const kind = pointKind(key);
@@ -344,6 +352,9 @@ function updateUi() {
   curveValue.textContent = Number(state.curve).toFixed(2);
   fillInput.value = String(state.fill);
   fillValue.textContent = Number(state.fill).toFixed(2);
+  symmetryButton.classList.toggle('active', state.symmetry);
+  symmetryButton.setAttribute('aria-pressed', state.symmetry ? 'true' : 'false');
+  symmetryButton.textContent = `SYMMETRY: ${state.symmetry ? 'ON' : 'OFF'}`;
   viewChip.textContent = state.view.toUpperCase();
   viewButtons.forEach((button) => button.classList.toggle('active', button.dataset.view === state.view));
 }
@@ -361,17 +372,13 @@ function snapView(view) {
   state.view = view;
   const distance = 390;
   if (view === 'front') {
-    camera.up.set(0, 1, 0);
-    camera.position.set(0, 0, distance);
+    camera.up.set(0, 1, 0); camera.position.set(0, 0, distance);
   } else if (view === 'side') {
-    camera.up.set(0, 1, 0);
-    camera.position.set(distance, 0, 0);
+    camera.up.set(0, 1, 0); camera.position.set(distance, 0, 0);
   } else if (view === 'top') {
-    camera.up.set(0, 0, -1);
-    camera.position.set(0, distance, 0.001);
+    camera.up.set(0, 0, -1); camera.position.set(0, distance, 0.001);
   } else {
-    camera.up.set(0, 1, 0);
-    camera.position.set(245, 210, 335);
+    camera.up.set(0, 1, 0); camera.position.set(245, 210, 335);
   }
   controls.target.set(0, 0, 0);
   controls.enabled = view === 'orbit';
@@ -408,11 +415,16 @@ function configureDragPlane(key) {
   }
 }
 function setPoint(key, point) {
-  state.points[key] = {
+  const next = {
     x: clamp(point.x, -175, 175),
     y: clamp(point.y, -150, 150),
     z: clamp(point.z, -175, 175),
   };
+  if (state.symmetry && CENTRELINE_KEYS.has(key)) next.x = 0;
+  state.points[key] = next;
+  if (state.symmetry && MIRROR[key]) {
+    state.points[MIRROR[key]] = { x: -next.x, y: next.y, z: next.z };
+  }
   saveState();
   renderEditor();
 }
@@ -459,6 +471,12 @@ heightInput.addEventListener('input', () => {
 });
 curveInput.addEventListener('input', () => { state.curve = Number(curveInput.value); saveState(); renderEditor(); });
 fillInput.addEventListener('input', () => { state.fill = Number(fillInput.value); saveState(); renderEditor(); });
+symmetryButton.addEventListener('click', () => {
+  state.symmetry = !state.symmetry;
+  if (state.symmetry) symmetrisePoints(state.points);
+  saveState();
+  renderEditor();
+});
 flattenButton.addEventListener('click', () => {
   POINT_ORDER.forEach((key) => { state.points[key].y = 0; });
   saveState(); renderEditor();
@@ -466,9 +484,7 @@ flattenButton.addEventListener('click', () => {
 resetButton.addEventListener('click', () => {
   state = { ...clone(STARFISH_V2), view: 'top' };
   selectedPoint = 'frontTip';
-  saveState();
-  snapView('top');
-  renderEditor();
+  saveState(); snapView('top'); renderEditor();
 });
 
 function exportDefinition() {
@@ -477,6 +493,7 @@ function exportDefinition() {
     version: 2,
     rig: STARFISH_V2.rig,
     coordinateSystem: { groundPlane: 'xz', heightAxis: 'y', frontAxis: '-z' },
+    symmetry: state.symmetry,
     curve: state.curve,
     fill: state.fill,
     points: clone(state.points),
@@ -486,31 +503,22 @@ async function copyText(text) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
   const textarea = document.createElement('textarea');
   textarea.value = text;
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand('copy');
-  textarea.remove();
+  textarea.style.position = 'fixed'; textarea.style.opacity = '0';
+  document.body.appendChild(textarea); textarea.select(); document.execCommand('copy'); textarea.remove();
 }
 copyButton.addEventListener('click', async () => {
   try {
     await copyText(JSON.stringify(exportDefinition(), null, 2));
     copyButton.textContent = 'COPIED';
     setTimeout(() => { copyButton.textContent = 'COPY JSON V2'; }, 900);
-  } catch (error) {
-    console.warn('Could not copy Black ICE glyph', error);
-  }
+  } catch (error) { console.warn('Could not copy Black ICE glyph', error); }
 });
 downloadButton.addEventListener('click', () => {
   const blob = new Blob([`${JSON.stringify(exportDefinition(), null, 2)}\n`], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = 'arkour-black-ice-starfish-v2.json';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
+  anchor.href = url; anchor.download = 'arkour-black-ice-starfish-v2.json';
+  document.body.appendChild(anchor); anchor.click(); anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 500);
 });
 

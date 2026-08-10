@@ -2,6 +2,35 @@ import type { Vec3 } from './types';
 
 export type SceneMaterial = 'dark' | 'edge' | 'ghost' | 'conductor' | 'ceramic';
 
+export type HoldRouteKind = 'orbit' | 'perch' | 'dart' | 'helix';
+export type AttachmentDirection = 'left' | 'right' | 'up' | 'down';
+
+export interface HoldRouteSpec {
+  kind: HoldRouteKind;
+  radius: number;
+  upAmplitude: number;
+  forwardAmplitude: number;
+  speed: number;
+  approachSideOnly?: boolean;
+}
+
+export interface NodeAttachmentSpec {
+  directions: readonly AttachmentDirection[];
+  minReach: number;
+  maxReach: number;
+  forwardSearch: number;
+  strands: number;
+  radius: number;
+}
+
+export interface EncounterInteractionPlan {
+  formId: string;
+  blocker: boolean;
+  stopClearance?: number;
+  holdRoute: HoldRouteSpec;
+  attachments?: NodeAttachmentSpec;
+}
+
 export type RoutePosition =
   | { distance: number; at?: never }
   | { at: number; distance?: never };
@@ -122,6 +151,7 @@ export interface SceneLighting {
 export interface ScenePlan {
   pieces: readonly ScenePiece[];
   lighting?: SceneLighting;
+  interactions?: Readonly<Record<string, EncounterInteractionPlan>>;
 }
 
 export function createAcceptanceScenePlan(): ScenePlan {

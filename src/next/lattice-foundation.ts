@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { generateNodeFormPlan } from '../architecture/node-forms';
+import type { SpatialKeepout } from '../run/keepout';
 import { addPasswordBlockers, type PasswordBlockers } from '../run/password-blockers';
 import { createRouteFrame, sampleRouteFrameAtDistance } from '../run/route-frame';
 import type { RuntimeRoute } from '../run/route';
@@ -7,6 +8,7 @@ import type { EncounterSpec, RunWorld } from '../run/types';
 import { HoldCircuitSystem, type HoldPose } from './hold-circuits';
 import { addSparseLatticeChassis } from './lattice-chassis';
 import { addLatticeVolumeCity } from './lattice-volume';
+import { addLatticeNodeSeals, collectAttachmentTargets } from './node-seals';
 
 function addWireAccents(root: THREE.Object3D): void {
   const material = new THREE.LineBasicMaterial({
@@ -25,9 +27,9 @@ function addWireAccents(root: THREE.Object3D): void {
 }
 
 /**
- * Native runtime owner for the new Arkour foundation. The runtime calls this
- * subsystem directly during its own animation tick; there is no renderer
- * monkey-patch and no second requestAnimationFrame loop.
+ * Native runtime owner for the new Arkour foundation. World-space providers use
+ * the same spatial admission authority as ordinary scenery; blocker attachments
+ * then grow into the actual lattice/chassis meshes that survived generation.
  */
 export class LatticeFoundation {
   private readonly holds: HoldCircuitSystem;
@@ -42,14 +44,28 @@ export class LatticeFoundation {
     scene: THREE.Scene,
     routes: Map<string, RuntimeRoute>,
     world: RunWorld,
+    keepout: SpatialKeepout,
   ) {
     const interactions = generateNodeFormPlan(world);
 
     const lattice = addLatticeVolumeCity(scene, world, { seed: 4712, density: 0.18 });
-    addWireAccents(lattice);
+    const chassis = addSparseLatticeChassis(scene, world, keepout);
 
-    const chassis = addSparseLatticeChassis(scene, world);
+    // Attachment targets are sampled before decorative wire accents are added,
+    // so the solver binds nodes to real machinery rather than to edge lines.
+    const attachmentTargets = collectAttachmentTargets(lattice, chassis);
+    const seals = addLatticeNodeSeals(
+      scene,
+      routes,
+      world,
+      interactions,
+      attachmentTargets,
+      keepout,
+    );
+
+    addWireAccents(lattice);
     addWireAccents(chassis);
+    addWireAccents(seals);
 
     this.holds = new HoldCircuitSystem(scene, routes, world, interactions);
     this.blockers = addPasswordBlockers(scene, routes, world);
@@ -75,10 +91,6 @@ export class LatticeFoundation {
     this.blockers.resetAll();
   }
 
-  /**
-   * Applies the physical hold circuit to both the first-person camera and the
-   * visible Runner glyph immediately before the runtime renders the frame.
-   */
   applyHoldPresentation(
     camera: THREE.PerspectiveCamera,
     runner: THREE.Object3D | undefined,

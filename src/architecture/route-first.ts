@@ -46,14 +46,20 @@ function structuralPieceEntersNodeZone(piece: ScenePiece, world: RunWorld): bool
 }
 
 /**
- * Production composition point for the reconciled Arkour architecture model.
+ * Canonical production composition point for the Arkour architecture engine.
  *
- * The route network remains the geometric authority in the runtime. Large node
- * components get first claim on the non-route space around encounters, the older
- * structural generator supplies continuous connective machinery between them,
- * and the vertical-city pass packs larger canyon/deck/utility districts into the
- * remaining route-relative space. Every proposal still has to pass the runtime's
- * all-route + camera keep-out admission rules before it enters the Three.js scene.
+ * The accepted engine contract lives in `docs/architecture-engine.md`. In short:
+ * compiled 60-degree routes are geometric authority; encounter machinery gets
+ * first claim around nodes; sparse chassis and volumetric city machinery occupy
+ * the remaining space; blocker nodes may later seal/attach to nearby structure;
+ * detail remains subordinate; and spatial admission has final veto before any
+ * proposal enters Three.js. Camera presentation is derived last and never owns
+ * gameplay topology.
+ *
+ * This function is intentionally the bridge while the current mixed generators
+ * are separated into sibling node/chassis/district/attachment/detail providers.
+ * Older map and city experiments are donor implementations, not alternate
+ * production engines.
  */
 export function generateRouteFirstArchitecture(
   world: RunWorld,

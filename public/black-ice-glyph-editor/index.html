@@ -4,8 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#030506" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <meta name="arkour-preview" content="black-ice-glyph-v2" />
   <title>Arkour — Black ICE Glyph Editor</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles.css?v=2" />
   <script type="importmap">
   {
     "imports": {
@@ -19,25 +23,25 @@
   <main class="editor-shell">
     <header class="topbar">
       <div>
-        <strong>ARKOUR // BLACK ICE GLYPH</strong>
-        <span>5-arm 3D point editor · starfish seed</span>
+        <strong>ARKOUR // BLACK ICE GLYPH <small>V2</small></strong>
+        <span>13-point 3D rig · 5 tips · 5 pits · 3 internal</span>
       </div>
       <button id="tools-open" type="button">TOOLS</button>
     </header>
 
     <section class="workspace" aria-label="Black ICE glyph editor">
-      <canvas id="editor" aria-label="Editable five-point Black ICE glyph"></canvas>
-      <div class="view-chip" id="view-chip">ORBIT</div>
+      <canvas id="editor" aria-label="Editable thirteen-point Black ICE starfish glyph"></canvas>
+      <div class="view-chip" id="view-chip">TOP</div>
       <aside class="point-readout" aria-live="polite">
-        <span class="eyebrow">SELECTED ARM</span>
-        <strong id="point-name">ARM 1 / CROWN</strong>
-        <span id="point-coords">X 0 · Y -125 · Z 0</span>
+        <span class="eyebrow">SELECTED POINT</span>
+        <strong id="point-name">FRONT TIP</strong>
+        <span id="point-coords">X 0 · Y 0 · Z -126</span>
       </aside>
       <nav class="view-bar" aria-label="3D view controls">
         <button class="view-button" data-view="front" type="button">FRONT</button>
         <button class="view-button" data-view="side" type="button">SIDE</button>
-        <button class="view-button" data-view="top" type="button">TOP</button>
-        <button class="view-button active" data-view="orbit" type="button">ORBIT</button>
+        <button class="view-button active" data-view="top" type="button">TOP</button>
+        <button class="view-button" data-view="orbit" type="button">ORBIT</button>
       </nav>
     </section>
 
@@ -45,23 +49,19 @@
     <aside id="tools-drawer" class="tools-drawer" aria-label="Black ICE glyph tools" aria-hidden="true">
       <div class="drawer-head">
         <div>
-          <span class="eyebrow">FIVE-POINT GENERATOR</span>
+          <span class="eyebrow">THIRTEEN-POINT RIG</span>
           <strong>STARFISH TOOLS</strong>
         </div>
         <button id="tools-close" type="button">CLOSE</button>
       </div>
 
       <label class="control-row depth-control">
-        <span>SELECTED DEPTH <output id="depth-value">0</output></span>
-        <input id="depth" type="range" min="-150" max="150" step="1" value="0" />
+        <span>SELECTED HEIGHT Y <output id="height-value">0</output></span>
+        <input id="height" type="range" min="-150" max="150" step="1" value="0" />
       </label>
       <label class="control-row">
-        <span>CORE / ARM WIDTH <output id="core-value">0.43</output></span>
-        <input id="core" type="range" min="0.18" max="0.72" step="0.01" value="0.43" />
-      </label>
-      <label class="control-row">
-        <span>CURVE <output id="curve-value">0.42</output></span>
-        <input id="curve" type="range" min="0" max="1" step="0.01" value="0.42" />
+        <span>CURVE <output id="curve-value">0.36</output></span>
+        <input id="curve" type="range" min="0" max="1" step="0.01" value="0.36" />
       </label>
       <label class="control-row">
         <span>FILL <output id="fill-value">0.12</output></span>
@@ -69,16 +69,16 @@
       </label>
 
       <div class="button-grid">
-        <button id="flatten" type="button">FLATTEN Z</button>
-        <button id="reset" type="button">RESET STARFISH</button>
-        <button id="copy-json" type="button">COPY JSON</button>
+        <button id="flatten" type="button">FLATTEN TO GROUND</button>
+        <button id="reset" type="button">RESET FLAT STARFISH</button>
+        <button id="copy-json" type="button">COPY JSON V2</button>
         <button id="download-json" type="button">DOWNLOAD JSON</button>
       </div>
 
-      <p class="help">The five handles are the five arm tips. The inward valleys are generated automatically from neighbouring arms, so you can pull the creature into asymmetric Black ICE shapes without adding more control points. Front drags X/Y, Side drags Z/Y, Top drags X/Z. Orbit mode moves a handle in a camera-facing plane.</p>
+      <p class="help">Top is the natural editing view: X/Z is the ground plane and Y is height. The front of the creature is the FRONT TIP. Five outer tips and five authored pits define the contour; CORE, INNER FRONT and INNER REAR form the internal body axis. Front drags X/Y, Side drags Z/Y, Top drags X/Z. Orbit mode moves a handle in a camera-facing plane.</p>
     </aside>
   </main>
 
-  <script type="module" src="./editor.js"></script>
+  <script type="module" src="./editor.js?v=2"></script>
 </body>
 </html>

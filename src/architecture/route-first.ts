@@ -1,6 +1,7 @@
 import type { RouteAnchor, ScenePiece, ScenePlan } from '../run/scene-plan';
 import type { RouteSpec, RunWorld, Vec3 } from '../run/types';
 import type { ArchitectureOptions } from './generate';
+import { generateHexLattice } from './hex-lattice';
 import { generateNodeAttachments } from './node-attachments';
 import { generateNodeComponents } from './node-components';
 import { generateNodeFormPlan } from './node-forms';
@@ -50,25 +51,29 @@ function structuralPieceEntersNodeZone(piece: ScenePiece, world: RunWorld): bool
 /**
  * Canonical Arkour architecture composition.
  *
- * Routes remain geometric authority. Node forms own interaction grammar, node
- * components own recognisable encounter machinery, the chassis and city propose
- * surrounding structure, and the attachment pass grows node machinery into
- * actual nearby environment proposals. Runtime keep-out remains final authority
- * for ordinary scenery; deliberate logical blockers are encounter actors and may
- * occupy the route until resolved.
+ * The compiled 60-degree route network is geometric authority. A visible ghost
+ * lattice makes that shared spatial substrate explicit while reconciliation is
+ * underway. Node forms own interaction grammar, node components own recognisable
+ * encounter machinery, the chassis and city propose surrounding structure, and
+ * the attachment pass grows node machinery into actual nearby environment
+ * proposals. Runtime keep-out remains final authority for ordinary scenery;
+ * deliberate logical blockers are encounter actors and may occupy the route
+ * until resolved.
  */
 export function generateRouteFirstArchitecture(
   world: RunWorld,
   options: ArchitectureOptions = {},
 ): ScenePlan {
   const structural = generateStructuralArchitecture(world, options);
+  const lattice = generateHexLattice(world);
   const nodes = generateNodeComponents(world);
   const city = generateVerticalCity(world, options);
   const connectiveStructure = structural.pieces.filter((piece) => !structuralPieceEntersNodeZone(piece, world));
   const interactions = generateNodeFormPlan(world);
 
   // Attachments must find the environment rather than accidentally attaching a
-  // node back into one of its own flank pieces.
+  // node back into one of its own flank pieces. The lattice is visual/substrate
+  // data, not an attachment target.
   const environmentPieces: ScenePiece[] = [
     ...connectiveStructure,
     ...city,
@@ -78,6 +83,6 @@ export function generateRouteFirstArchitecture(
   return {
     ...structural,
     interactions,
-    pieces: [...nodes, ...attachments, ...connectiveStructure, ...city],
+    pieces: [...lattice, ...nodes, ...attachments, ...connectiveStructure, ...city],
   };
 }

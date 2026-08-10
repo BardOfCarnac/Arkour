@@ -1,8 +1,9 @@
 import type { RouteAnchor, ScenePiece, ScenePlan } from '../run/scene-plan';
 import type { RouteSpec, RunWorld, Vec3 } from '../run/types';
 import type { ArchitectureOptions } from './generate';
+import { generateNodeAttachments } from './node-attachments';
 import { generateNodeComponents } from './node-components';
-import { generatePasswordSeals } from './password-seals';
+import { generateNodeFormPlan } from './node-forms';
 import { generateStructuralArchitecture } from './structural';
 import { generateVerticalCity } from './vertical-city';
 
@@ -47,17 +48,14 @@ function structuralPieceEntersNodeZone(piece: ScenePiece, world: RunWorld): bool
 }
 
 /**
- * Production composition point for the reconciled Arkour architecture model.
+ * Canonical Arkour architecture composition.
  *
- * The route network remains the geometric authority in the runtime. Large node
- * components get first claim on the non-route space around encounters. Password
- * sealing then extends blocking nodes into the nearby structural envelope before
- * the older structural generator supplies continuous connective machinery and
- * the vertical-city pass packs larger canyon/deck/utility districts into the
- * remaining route-relative space. Every ordinary scenery proposal still has to
- * pass the runtime's all-route + camera keep-out admission rules before it enters
- * the Three.js scene; moving logical blockers are runtime encounter actors and are
- * allowed to occupy the route until resolved.
+ * Routes remain geometric authority. Node forms own interaction grammar, node
+ * components own recognisable encounter machinery, the chassis and city propose
+ * surrounding structure, and the attachment pass grows node machinery into
+ * actual nearby environment proposals. Runtime keep-out remains final authority
+ * for ordinary scenery; deliberate logical blockers are encounter actors and may
+ * occupy the route until resolved.
  */
 export function generateRouteFirstArchitecture(
   world: RunWorld,
@@ -65,12 +63,21 @@ export function generateRouteFirstArchitecture(
 ): ScenePlan {
   const structural = generateStructuralArchitecture(world, options);
   const nodes = generateNodeComponents(world);
-  const passwordSeals = generatePasswordSeals(world);
   const city = generateVerticalCity(world, options);
   const connectiveStructure = structural.pieces.filter((piece) => !structuralPieceEntersNodeZone(piece, world));
+  const interactions = generateNodeFormPlan(world);
+
+  // Attachments must find the environment rather than accidentally attaching a
+  // node back into one of its own flank pieces.
+  const environmentPieces: ScenePiece[] = [
+    ...connectiveStructure,
+    ...city,
+  ];
+  const attachments = generateNodeAttachments(world, environmentPieces, interactions);
 
   return {
     ...structural,
-    pieces: [...nodes, ...passwordSeals, ...connectiveStructure, ...city],
+    interactions,
+    pieces: [...nodes, ...attachments, ...connectiveStructure, ...city],
   };
 }

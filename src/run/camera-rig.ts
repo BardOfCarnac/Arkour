@@ -7,7 +7,9 @@ import {
   cameraSegmentIsClear,
   type CameraObstacleField,
 } from './camera-obstacles';
+import { sampleHoldingRoute } from './holding-routes';
 import { createRouteFrame, sampleRouteFrameAtDistance } from './route-frame';
+import type { HoldRouteSpec } from './scene-plan';
 
 interface SafeCameraCandidate {
   right: number;
@@ -56,6 +58,7 @@ export class CameraRig {
     dt: number,
     held: boolean,
     elapsed: number,
+    holdRoute?: HoldRouteSpec,
   ): void {
     sampleRouteFrameAtDistance(route, distance, this.frame);
 
@@ -63,7 +66,7 @@ export class CameraRig {
     route.pointAtDistance(lookDistance, this.lookPoint);
     route.tangentAtDistance(lookDistance, this.aheadTangent);
 
-    this.chooseSafePosition(camera, held, elapsed);
+    this.chooseSafePosition(camera, held, elapsed, holdRoute);
 
     if (!this.initialized) {
       camera.position.copy(this.safePosition);
@@ -94,11 +97,15 @@ export class CameraRig {
     camera: THREE.PerspectiveCamera,
     held: boolean,
     elapsed: number,
+    holdRoute?: HoldRouteSpec,
   ): void {
-    const holdRight = held
+    const sampledHold = held && holdRoute
+      ? sampleHoldingRoute(holdRoute, elapsed)
+      : null;
+    const fallbackRight = held && !sampledHold
       ? Math.sin(elapsed * 0.8) * RUN_CAMERA_PROFILE.holdRightAmplitude
       : 0;
-    const holdUp = held
+    const fallbackUp = held && !sampledHold
       ? Math.cos(elapsed * 0.55) * RUN_CAMERA_PROFILE.holdUpAmplitude
       : 0;
 
@@ -106,13 +113,16 @@ export class CameraRig {
     let bestIndex = 0;
 
     SAFE_CAMERA_CANDIDATES.forEach((candidate, index) => {
-      const right = candidate.right + (candidate.ignoreHold ? 0 : holdRight);
-      const up = candidate.up + (candidate.ignoreHold ? 0 : holdUp);
+      const holdRight = candidate.ignoreHold ? 0 : (sampledHold?.right ?? fallbackRight);
+      const holdUp = candidate.ignoreHold ? 0 : (sampledHold?.up ?? fallbackUp);
+      const holdForward = candidate.ignoreHold ? 0 : (sampledHold?.forward ?? 0);
+      const right = candidate.right + holdRight;
+      const up = candidate.up + holdUp;
 
       this.candidatePosition.copy(this.frame.position)
         .addScaledVector(this.frame.right, right)
         .addScaledVector(this.frame.up, up)
-        .addScaledVector(this.frame.forward, -candidate.trail);
+        .addScaledVector(this.frame.forward, holdForward - candidate.trail);
 
       let score = cameraCollisionPenalty(this.candidatePosition, this.obstacles)
         + candidate.bias;

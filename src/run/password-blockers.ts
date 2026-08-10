@@ -7,6 +7,7 @@ interface PasswordGate {
   encounter: EncounterSpec;
   left: THREE.Mesh;
   right: THREE.Mesh;
+  seam: THREE.Mesh;
   openingWidth: number;
   openAmount: number;
   targetOpen: number;
@@ -51,6 +52,8 @@ export class PasswordBlockers {
       const travel = gate.openingWidth * 0.72 + 1.8;
       gate.left.position.x = -half - travel * gate.openAmount;
       gate.right.position.x = half + travel * gate.openAmount;
+      gate.seam.scale.y = Math.max(0.02, 1 - gate.openAmount);
+      gate.seam.visible = gate.openAmount < 0.985;
     }
   }
 }
@@ -58,8 +61,8 @@ export class PasswordBlockers {
 /**
  * Adds the moving route-blocking part of Password nodes after static scenery has
  * been admitted. These shutters intentionally occupy the reserved route volume;
- * the surrounding bulkhead remains ordinary architecture and therefore still
- * obeys the normal keep-out rules.
+ * surrounding attachments remain ordinary architecture and therefore still obey
+ * the normal keep-out rules.
  */
 export function addPasswordBlockers(
   scene: THREE.Scene,
@@ -113,6 +116,7 @@ export function addPasswordBlockers(
         encounter,
         left,
         right,
+        seam,
         openingWidth,
         openAmount: 0,
         targetOpen: 0,

@@ -1,7 +1,8 @@
 import './styles.css';
+import { acceptanceArchitectureDocument } from './architecture/document/acceptance';
+import { compileArchitectureDocument } from './architecture/document/compile';
 import { generateRouteFirstArchitecture } from './architecture/route-first';
 import { RunRuntime } from './run/runtime';
-import { createAcceptanceWorld } from './run/world';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('Missing #app root');
@@ -40,7 +41,10 @@ const get = <T extends HTMLElement>(id: string): T => {
   return element as T;
 };
 
-const world = createAcceptanceWorld();
+// Canonical Run starts from the same ArchitectureDocument that the editor/import
+// seam will produce. The spatial compiler is therefore the single authority for
+// 60-degree route placement; no hand-authored fallback world sits underneath it.
+const world = compileArchitectureDocument(acceptanceArchitectureDocument);
 const architecture = generateRouteFirstArchitecture(world, { seed: 4712 });
 
 const runtime = new RunRuntime(world, architecture, {

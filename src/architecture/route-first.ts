@@ -53,9 +53,9 @@ function structuralPieceEntersNodeZone(piece: ScenePiece, world: RunWorld): bool
  * Routes remain geometric authority. Node forms own interaction grammar, node
  * components own recognisable encounter machinery, the chassis and city propose
  * surrounding structure, and the attachment pass grows node machinery into
- * actual nearby proposals. Runtime keep-out remains final authority for ordinary
- * scenery; deliberate logical blockers are encounter actors and may occupy the
- * route until resolved.
+ * actual nearby environment proposals. Runtime keep-out remains final authority
+ * for ordinary scenery; deliberate logical blockers are encounter actors and may
+ * occupy the route until resolved.
  */
 export function generateRouteFirstArchitecture(
   world: RunWorld,
@@ -67,12 +67,13 @@ export function generateRouteFirstArchitecture(
   const connectiveStructure = structural.pieces.filter((piece) => !structuralPieceEntersNodeZone(piece, world));
   const interactions = generateNodeFormPlan(world);
 
-  const basePieces: ScenePiece[] = [
-    ...nodes,
+  // Attachments must find the environment rather than accidentally attaching a
+  // node back into one of its own flank pieces.
+  const environmentPieces: ScenePiece[] = [
     ...connectiveStructure,
     ...city,
   ];
-  const attachments = generateNodeAttachments(world, basePieces, interactions);
+  const attachments = generateNodeAttachments(world, environmentPieces, interactions);
 
   return {
     ...structural,

@@ -9,6 +9,7 @@ import { HoldCircuitSystem, type HoldPose } from './hold-circuits';
 import { addSparseLatticeChassis } from './lattice-chassis';
 import { addLatticeVolumeCity } from './lattice-volume';
 import { addLatticeNodeSeals, collectAttachmentTargets } from './node-seals';
+import { createNextPresentationKeepout } from './presentation-keepout';
 
 function addWireAccents(root: THREE.Object3D): void {
   const material = new THREE.LineBasicMaterial({
@@ -44,12 +45,13 @@ export class LatticeFoundation {
     scene: THREE.Scene,
     routes: Map<string, RuntimeRoute>,
     world: RunWorld,
-    keepout: SpatialKeepout,
+    keepout?: SpatialKeepout,
   ) {
     const interactions = generateNodeFormPlan(world);
+    const spatialKeepout = keepout ?? createNextPresentationKeepout(world, routes);
 
     const lattice = addLatticeVolumeCity(scene, world, { seed: 4712, density: 0.18 });
-    const chassis = addSparseLatticeChassis(scene, world, keepout);
+    const chassis = addSparseLatticeChassis(scene, world, spatialKeepout);
 
     // Attachment targets are sampled before decorative wire accents are added,
     // so the solver binds nodes to real machinery rather than to edge lines.
@@ -60,7 +62,7 @@ export class LatticeFoundation {
       world,
       interactions,
       attachmentTargets,
-      keepout,
+      spatialKeepout,
     );
 
     addWireAccents(lattice);

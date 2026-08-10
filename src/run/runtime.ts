@@ -5,11 +5,9 @@ import { RunInput, type RunAction } from './input';
 import { addPasswordBlockers, type PasswordBlockers } from './password-blockers';
 import { RuntimeRoute } from './route';
 import { addScenePlan } from './scenery';
-import type { ScenePlan } from './scene-plan';
+import type { EncounterInteractionPlan, ScenePlan } from './scene-plan';
 import type { EncounterSpec, JunctionSpec, RunState, RunWorld } from './types';
 import { addParticles, addRouteGeometry } from './world';
-
-const PASSWORD_STOP_CLEARANCE = 7;
 
 interface RuntimeElements {
   canvasHost: HTMLElement;
@@ -32,6 +30,7 @@ export class RunRuntime {
   private readonly routeMeshes: Map<string, THREE.Mesh>;
   private readonly cameraRig: CameraRig;
   private readonly passwordBlockers: PasswordBlockers;
+  private readonly interactions: Readonly<Record<string, EncounterInteractionPlan>>;
   private readonly input = new RunInput();
   private readonly clock = new THREE.Clock();
   private readonly resolvedEncounters = new Set<string>();
@@ -56,6 +55,8 @@ export class RunRuntime {
     scenePlan: ScenePlan,
     private readonly elements: RuntimeElements,
   ) {
+    this.interactions = scenePlan.interactions ?? {};
+
     for (const spec of world.routes) {
       this.routes.set(spec.id, new RuntimeRoute(spec));
     }
@@ -109,7 +110,18 @@ export class RunRuntime {
     if (!this.paused) this.update(dt);
     this.passwordBlockers.update(dt);
 
-    this.cameraRig.update(this.camera, this.currentRoute, this.distance, dt, this.held, this.elapsed);
+    const holdRoute = this.held && this.activeEncounter
+      ? this.interactions[this.activeEncounter.id]?.holdRoute
+      : undefined;
+    this.cameraRig.update(
+      this.camera,
+      this.currentRoute,
+      this.distance,
+      dt,
+      this.held,
+      this.elapsed,
+      holdRoute,
+    );
     this.updateBranchButtons();
     this.renderer.render(this.scene, this.camera);
     this.updateDebug(dt);
@@ -121,7 +133,7 @@ export class RunRuntime {
 
     const previousDistance = this.distance;
     if (!this.held) this.distance += this.speed * dt;
-    this.enforcePasswordBlock(previousDistance);
+    this.enforceLogicalBlock(previousDistance);
 
     if (this.activeJunction && !this.blockingEncounter) {
       const junctionDistance = this.activeJunction.at * this.currentRoute.length;
@@ -141,19 +153,24 @@ export class RunRuntime {
     this.updateHud();
   }
 
-  private enforcePasswordBlock(previousDistance: number): void {
+  private enforceLogicalBlock(previousDistance: number): void {
     if (this.blockingEncounter || this.held) return;
 
     const blocker = (this.currentRoute.spec.encounters ?? [])
-      .filter((encounter) => (
-        encounter.type === 'password'
+      .map((encounter) => ({
+        encounter,
+        interaction: this.interactions[encounter.id],
+      }))
+      .filter(({ encounter, interaction }) => (
+        interaction?.blocker
         && !this.resolvedEncounters.has(encounter.id)
       ))
-      .map((encounter) => {
+      .map(({ encounter, interaction }) => {
         const encounterDistance = encounter.at * this.currentRoute.length;
+        const clearance = interaction.stopClearance ?? 7;
         return {
           encounter,
-          stopDistance: Math.max(0, encounterDistance - PASSWORD_STOP_CLEARANCE),
+          stopDistance: Math.max(0, encounterDistance - clearance),
         };
       })
       .sort((a, b) => a.stopDistance - b.stopDistance)
@@ -369,13 +386,17 @@ export class RunRuntime {
       this.fpsTime = 0;
     }
 
+    const form = this.activeEncounter
+      ? this.interactions[this.activeEncounter.id]?.formId
+      : undefined;
     this.elements.debug.textContent = [
       `route ${this.currentRoute.id}`,
       `distance ${this.distance.toFixed(1)} / ${this.currentRoute.length.toFixed(1)}`,
       `state ${this.state}`,
+      form ? `form ${form}` : '',
       `fps ${this.fps}`,
       '←/→ choose · Space resolve/hold · Esc pause',
-    ].join('\n');
+    ].filter(Boolean).join('\n');
   }
 
   private resize = (): void => {

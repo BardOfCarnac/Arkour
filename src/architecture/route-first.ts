@@ -49,16 +49,26 @@ function structuralPieceEntersNodeZone(piece: ScenePiece, world: RunWorld): bool
 }
 
 /**
- * Canonical Arkour architecture composition.
- *
- * The compiled 60-degree route network is geometric authority. A visible ghost
- * lattice makes that shared spatial substrate explicit while reconciliation is
- * underway. Node forms own interaction grammar, node components own recognisable
- * encounter machinery, the chassis and city propose surrounding structure, and
- * the attachment pass grows node machinery into actual nearby environment
- * proposals. Runtime keep-out remains final authority for ordinary scenery;
- * deliberate logical blockers are encounter actors and may occupy the route
- * until resolved.
+ * Transitional node-only composition for the canonical `next` runtime while
+ * its environment moves to one absolute world-space lattice volume. Keeping the
+ * old route-local chassis/city out of this plan is deliberate: otherwise the
+ * old repeated frames remain visually dominant and hide whether the new global
+ * substrate actually works.
+ */
+export function generateLatticeFoundationArchitecture(world: RunWorld): ScenePlan {
+  return {
+    lighting: {
+      hemisphere: { sky: 0x6fb9ca, ground: 0x020406, intensity: 0.72 },
+      key: { color: 0xdceff2, intensity: 1.15, position: [22, 34, -18] },
+    },
+    interactions: generateNodeFormPlan(world),
+    pieces: generateNodeComponents(world),
+  };
+}
+
+/**
+ * Legacy-compatible route-first composition retained for comparison while the
+ * canonical runtime migrates away from route-local environment generation.
  */
 export function generateRouteFirstArchitecture(
   world: RunWorld,
@@ -71,9 +81,6 @@ export function generateRouteFirstArchitecture(
   const connectiveStructure = structural.pieces.filter((piece) => !structuralPieceEntersNodeZone(piece, world));
   const interactions = generateNodeFormPlan(world);
 
-  // Attachments must find the environment rather than accidentally attaching a
-  // node back into one of its own flank pieces. The lattice is visual/substrate
-  // data, not an attachment target.
   const environmentPieces: ScenePiece[] = [
     ...connectiveStructure,
     ...city,

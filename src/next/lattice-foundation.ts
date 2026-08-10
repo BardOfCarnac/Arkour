@@ -40,7 +40,7 @@ export class LatticeFoundation {
 
   constructor(
     scene: THREE.Scene,
-    private readonly routes: Map<string, RuntimeRoute>,
+    routes: Map<string, RuntimeRoute>,
     world: RunWorld,
   ) {
     const interactions = generateNodeFormPlan(world);

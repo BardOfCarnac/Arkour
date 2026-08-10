@@ -7,9 +7,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <meta name="arkour-preview" content="black-ice-glyph-v2" />
+  <meta name="arkour-preview" content="black-ice-glyph-v2-symmetry" />
   <title>Arkour — Black ICE Glyph Editor</title>
-  <link rel="stylesheet" href="./styles.css?v=2" />
+  <link rel="stylesheet" href="./styles.css?v=3" />
   <script type="importmap">
   {
     "imports": {
@@ -55,6 +55,8 @@
         <button id="tools-close" type="button">CLOSE</button>
       </div>
 
+      <button id="symmetry" class="active" type="button" aria-pressed="true">SYMMETRY: ON</button>
+
       <label class="control-row depth-control">
         <span>SELECTED HEIGHT Y <output id="height-value">0</output></span>
         <input id="height" type="range" min="-150" max="150" step="1" value="0" />
@@ -75,10 +77,10 @@
         <button id="download-json" type="button">DOWNLOAD JSON</button>
       </div>
 
-      <p class="help">Top is the natural editing view: X/Z is the ground plane and Y is height. The front of the creature is the FRONT TIP. Five outer tips and five authored pits define the contour; CORE, INNER FRONT and INNER REAR form the internal body axis. Front drags X/Y, Side drags Z/Y, Top drags X/Z. Orbit mode moves a handle in a camera-facing plane.</p>
+      <p class="help">Top is the natural editing view: X/Z is the ground plane and Y is height. With SYMMETRY on, paired left/right tips and pits mirror across the front–rear axis; FRONT TIP, REAR PIT, CORE, INNER FRONT and INNER REAR stay on the centreline. Turn symmetry off for fully independent editing. Front drags X/Y, Side drags Z/Y, Top drags X/Z. Orbit mode moves a handle in a camera-facing plane.</p>
     </aside>
   </main>
 
-  <script type="module" src="./editor.js?v=2"></script>
+  <script type="module" src="./editor.js?v=3"></script>
 </body>
 </html>

@@ -32,20 +32,25 @@ The acceptance world exercises:
 - deterministic seeded machinery-field and particle placement;
 - false infrastructure that can imply routes without becoming selectable graph edges.
 
-## Architecture generator
+## Architecture engine
 
-The next layer compiles `RunWorld` into a deterministic `ScenePlan`. The runtime remains unaware of architecture semantics: it still receives topology plus scenery as two separate inputs.
+The architecture engine compiles logical NET topology into deterministic, traversable machinery while keeping gameplay routes authoritative. The accepted engine contract is recorded in [`docs/architecture-engine.md`](docs/architecture-engine.md).
 
-`generateArchitecture(world, { seed })` currently builds four visual passes:
+`generateRouteFirstArchitecture(world, { seed })` is the current production composer. The model is deliberately layered:
 
-- encounter architecture for Password, File, Control, Black ICE habitat, and Demon spaces;
-- route infrastructure such as heatsink fins, bus spines, component fields, cables, and deep-route vias;
-- junction switchyards with real exits surrounded by decorative false buses;
-- macro architecture that makes a small graph read as a much larger circuit-board megastructure.
+- graph/editor topology compiles to a real 3D route skeleton using the 60-degree spatial grammar;
+- traversal and encounter volumes are reserved before scenery is admitted;
+- large semantic node machinery gets first claim around NET elements and will own local holding routes;
+- sparse chassis infrastructure binds routes into one continuous machine;
+- volumetric city/district packing fills unused 3D space, including gaps between branches;
+- blocker nodes may use an attachment/sealing pass so logical barriers are also physical barriers;
+- circuitry-scale detail decorates the larger structure;
+- route/Runner keep-out remains final authority over proposed geometry;
+- camera presentation is derived last and never creates gameplay topology.
 
-The low-level renderer only knows reusable primitives. Alongside the original boxes, apertures, canyons, fields, interchanges, and decorative tubes, `ScenePlan` now supports cylinders, rings, and regular repeated members. Semantic component ideas such as connector gates, memory banks, relay hubs, switchyards, and transformer-like Demon cores live exclusively in the generator.
+The current generators are an evolutionary bridge while node, chassis, district, attachment, and detail responsibilities are separated cleanly. Older map/city prototypes remain donor experiments rather than competing production engines.
 
-Generation is seed-stable: route, encounter, junction, and field variations derive their own seeds so changing one generated area does not require rearranging the whole scene.
+Generation is seed-stable: route, encounter, junction, and field variations derive their own seeds so changing one generated area does not require rearranging the whole scene. The longer-term deterministic model also allows stable architecture/node strings to select repeatable macro and local forms.
 
 ## Development
 

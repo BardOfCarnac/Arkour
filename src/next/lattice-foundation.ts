@@ -5,6 +5,7 @@ import { addPasswordBlockers, type PasswordBlockers } from '../run/password-bloc
 import { createRouteFrame, sampleRouteFrameAtDistance } from '../run/route-frame';
 import type { RuntimeRoute } from '../run/route';
 import type { EncounterSpec, RunWorld } from '../run/types';
+import { addUndergroundDepthLighting } from './depth-lighting';
 import { HoldCircuitSystem, type HoldPose } from './hold-circuits';
 import { addSparseLatticeChassis } from './lattice-chassis';
 import { addLatticeVolumeCity } from './lattice-volume';
@@ -68,6 +69,7 @@ export class LatticeFoundation {
     addWireAccents(lattice);
     addWireAccents(chassis);
     addWireAccents(seals);
+    addUndergroundDepthLighting(scene, routes, world);
 
     this.holds = new HoldCircuitSystem(scene, routes, world, interactions);
     this.blockers = addPasswordBlockers(scene, routes, world);
@@ -113,14 +115,25 @@ export class LatticeFoundation {
         .addScaledVector(this.holdFrame.up, 0.12);
     }
 
-    this.cameraPosition.copy(this.runnerPosition)
-      .addScaledVector(this.holdFrame.up, 1.25)
-      .addScaledVector(this.holdFrame.forward, -3.4);
-    camera.position.copy(this.cameraPosition);
-
     const encounterDistance = encounter.at * pose.route.length;
     sampleRouteFrameAtDistance(pose.route, encounterDistance, this.nodeFrame);
-    this.target.copy(this.nodeFrame.position).addScaledVector(this.nodeFrame.up, 0.3);
+
+    // The old hold camera sat only 3.4 m behind the traveller, which made a
+    // large node or nearby bulkhead fill the bottom edge while most of a tall
+    // phone viewport looked into empty space. Pull back and keep a deliberate
+    // route-local shoulder offset so the node and its surrounding machinery are
+    // framed as one object instead of an extreme close-up.
+    const shoulder = pose.offset.right >= 0 ? 2.7 : -2.7;
+    this.cameraPosition.copy(this.runnerPosition)
+      .addScaledVector(this.holdFrame.right, shoulder)
+      .addScaledVector(this.holdFrame.up, 1.65)
+      .addScaledVector(this.holdFrame.forward, -6.4);
+    camera.position.copy(this.cameraPosition);
+    camera.up.copy(this.nodeFrame.up);
+
+    this.target.copy(this.nodeFrame.position)
+      .addScaledVector(this.nodeFrame.up, 0.2)
+      .addScaledVector(this.nodeFrame.forward, 0.35);
     camera.lookAt(this.target);
     return true;
   }

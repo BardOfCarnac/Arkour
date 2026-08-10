@@ -12,6 +12,8 @@ import type { EncounterSpec, RunWorld } from '../run/types';
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const OPENING_HEIGHT = 11.5;
 const BULKHEAD_DEPTH = 2.6;
+const PANEL_DEPTH = 3.4;
+const PANEL_OVERLAP = 0.9;
 
 interface AttachmentTarget {
   id: number;
@@ -27,6 +29,17 @@ interface SealMaterials {
   primary: THREE.MeshStandardMaterial;
   conductor: THREE.MeshStandardMaterial;
   brace: THREE.MeshStandardMaterial;
+  plate: THREE.MeshStandardMaterial;
+  plateInset: THREE.MeshStandardMaterial;
+}
+
+interface SealEnvelope {
+  left: number;
+  right: number;
+  up: number;
+  down: number;
+  innerSide: number;
+  innerVertical: number;
 }
 
 function createBeam(
@@ -140,8 +153,6 @@ function candidateForDirection(
     ? Math.abs(local.up)
     : Math.abs(local.right);
 
-  // Prefer actual machinery clearly in the requested hemisphere, while allowing
-  // diagonal lattice structures to serve two visually adjacent regions.
   if (cross > axial * 1.45 + 8) return undefined;
 
   return {
@@ -177,20 +188,228 @@ function selectTargets(
   return selected;
 }
 
-function anchorForDirection(
+function axialExtent(
+  direction: AttachmentDirection,
+  centre: THREE.Vector3,
+  selected: ReadonlyMap<AttachmentDirection, AttachmentTarget>,
+  spec: NodeAttachmentSpec,
+  right: THREE.Vector3,
+  up: THREE.Vector3,
+  forward: THREE.Vector3,
+  minimum: number,
+): number {
+  const target = selected.get(direction);
+  if (!target) return minimum + 7;
+  const local = directionalComponents(target.position.clone().sub(centre), right, up, forward);
+  const axial = direction === 'left' ? -local.right
+    : direction === 'right' ? local.right
+      : direction === 'up' ? local.up
+        : -local.up;
+  return THREE.MathUtils.clamp(axial - 1.5, minimum + 4.5, spec.maxReach * 0.92);
+}
+
+function createSealEnvelope(
+  centre: THREE.Vector3,
+  openingWidth: number,
+  selected: ReadonlyMap<AttachmentDirection, AttachmentTarget>,
+  spec: NodeAttachmentSpec,
+  right: THREE.Vector3,
+  up: THREE.Vector3,
+  forward: THREE.Vector3,
+): SealEnvelope {
+  const innerSide = openingWidth * 0.5 + 2.45;
+  const innerVertical = OPENING_HEIGHT * 0.5 + 2.45;
+  return {
+    innerSide,
+    innerVertical,
+    left: axialExtent('left', centre, selected, spec, right, up, forward, innerSide),
+    right: axialExtent('right', centre, selected, spec, right, up, forward, innerSide),
+    up: axialExtent('up', centre, selected, spec, right, up, forward, innerVertical),
+    down: axialExtent('down', centre, selected, spec, right, up, forward, innerVertical),
+  };
+}
+
+function createPanel(
+  centre: THREE.Vector3,
+  right: THREE.Vector3,
+  up: THREE.Vector3,
+  forward: THREE.Vector3,
+  localRight: number,
+  localUp: number,
+  localForward: number,
+  width: number,
+  height: number,
+  depth: number,
+  material: THREE.Material,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+  mesh.position.copy(centre)
+    .addScaledVector(right, localRight)
+    .addScaledVector(up, localUp)
+    .addScaledVector(forward, localForward);
+  const basis = new THREE.Matrix4().makeBasis(right, up, forward);
+  mesh.quaternion.setFromRotationMatrix(basis);
+  return mesh;
+}
+
+/**
+ * The blocker body is an aperture-aware exception to generic route keep-out.
+ * Each panel is defined explicitly outside the passable opening, so together
+ * they close the cross-section while the central aperture remains untouched.
+ * Staggered fore/aft depths keep it reading as interlocking machinery rather
+ * than a single flat room wall.
+ */
+function addSealedCrossSection(
+  group: THREE.Group,
+  centre: THREE.Vector3,
+  right: THREE.Vector3,
+  up: THREE.Vector3,
+  forward: THREE.Vector3,
+  envelope: SealEnvelope,
+  materials: SealMaterials,
+): void {
+  const fullHeight = envelope.up + envelope.down;
+  const centreY = (envelope.up - envelope.down) * 0.5;
+  const leftWidth = envelope.left - envelope.innerSide + PANEL_OVERLAP;
+  const rightWidth = envelope.right - envelope.innerSide + PANEL_OVERLAP;
+  const topHeight = envelope.up - envelope.innerVertical + PANEL_OVERLAP;
+  const bottomHeight = envelope.down - envelope.innerVertical + PANEL_OVERLAP;
+  const centreWidth = envelope.innerSide * 2 + PANEL_OVERLAP * 2;
+
+  const panels = [
+    createPanel(
+      centre,
+      right,
+      up,
+      forward,
+      -(envelope.left + envelope.innerSide) * 0.5,
+      centreY,
+      -0.62,
+      leftWidth,
+      fullHeight,
+      PANEL_DEPTH,
+      materials.plate,
+    ),
+    createPanel(
+      centre,
+      right,
+      up,
+      forward,
+      (envelope.right + envelope.innerSide) * 0.5,
+      centreY,
+      0.48,
+      rightWidth,
+      fullHeight,
+      PANEL_DEPTH,
+      materials.plateInset,
+    ),
+    createPanel(
+      centre,
+      right,
+      up,
+      forward,
+      0,
+      (envelope.up + envelope.innerVertical) * 0.5,
+      -0.12,
+      centreWidth,
+      topHeight,
+      PANEL_DEPTH + 0.7,
+      materials.plateInset,
+    ),
+    createPanel(
+      centre,
+      right,
+      up,
+      forward,
+      0,
+      -(envelope.down + envelope.innerVertical) * 0.5,
+      0.78,
+      centreWidth,
+      bottomHeight,
+      PANEL_DEPTH + 0.5,
+      materials.plate,
+    ),
+  ];
+
+  for (const panel of panels) {
+    panel.castShadow = false;
+    panel.receiveShadow = false;
+    group.add(panel);
+  }
+
+  // Broad backing ribs overlap the four stepped seams. They are offset behind
+  // the front faces, so a visible seam never becomes a plausible bypass.
+  const seamDepth = -PANEL_DEPTH * 0.78;
+  const verticalRibHeight = Math.max(3, fullHeight - 2.4);
+  const horizontalRibWidth = Math.max(3, envelope.left + envelope.right - 2.4);
+  group.add(
+    createPanel(
+      centre,
+      right,
+      up,
+      forward,
+      -envelope.innerSide + 0.25,
+      centreY,
+      seamDepth,
+      1.25,
+      verticalRibHeight,
+      1.15,
+      materials.conductor,
+    ),
+    createPanel(
+      centre,
+      right,
+      up,
+      forward,
+      envelope.innerSide - 0.25,
+      centreY,
+      seamDepth - 0.18,
+      1.25,
+      verticalRibHeight,
+      1.15,
+      materials.conductor,
+    ),
+    createPanel(
+      centre,
+      right,
+      up,
+      forward,
+      (envelope.right - envelope.left) * 0.5,
+      envelope.innerVertical - 0.25,
+      seamDepth - 0.34,
+      horizontalRibWidth,
+      1.15,
+      1.05,
+      materials.brace,
+    ),
+    createPanel(
+      centre,
+      right,
+      up,
+      forward,
+      (envelope.right - envelope.left) * 0.5,
+      -envelope.innerVertical + 0.25,
+      seamDepth - 0.52,
+      horizontalRibWidth,
+      1.15,
+      1.05,
+      materials.brace,
+    ),
+  );
+}
+
+function outerAnchorForDirection(
   direction: AttachmentDirection,
   centre: THREE.Vector3,
   right: THREE.Vector3,
   up: THREE.Vector3,
-  openingWidth: number,
+  envelope: SealEnvelope,
 ): THREE.Vector3 {
-  const side = openingWidth * 0.5 + 3.1;
-  const vertical = OPENING_HEIGHT * 0.5 + 3.1;
   switch (direction) {
-    case 'left': return centre.clone().addScaledVector(right, -side);
-    case 'right': return centre.clone().addScaledVector(right, side);
-    case 'up': return centre.clone().addScaledVector(up, vertical);
-    case 'down': return centre.clone().addScaledVector(up, -vertical);
+    case 'left': return centre.clone().addScaledVector(right, -envelope.left);
+    case 'right': return centre.clone().addScaledVector(right, envelope.right);
+    case 'up': return centre.clone().addScaledVector(up, envelope.up);
+    case 'down': return centre.clone().addScaledVector(up, -envelope.down);
   }
 }
 
@@ -206,6 +425,7 @@ function addFan(
   materials: SealMaterials,
   keepout: SpatialKeepout,
 ): void {
+  if (anchor.distanceTo(target) < 2.5) return;
   const outward = directionVector(direction, right, up);
   const tangent = direction === 'left' || direction === 'right' ? up : right;
   const strands = Math.max(2, spec.strands);
@@ -233,9 +453,6 @@ function addFan(
     farPoints.push(end);
   }
 
-  // Cross-bracing makes each radial attachment read as a structural bulkhead
-  // sector rather than a decorative cable bundle, while leaving irregular holes
-  // and machinery depth instead of reconstructing a flat room wall.
   for (let index = 0; index < nearPoints.length - 2; index += 2) {
     const a = nearPoints[index];
     const b = nearPoints[index + 2];
@@ -272,7 +489,6 @@ function addLocalCollar(
     const a = corners[index];
     const b = corners[(index + 1) % corners.length];
     if (!a || !b) continue;
-    // Split the collar fore/aft so it reads as thick machinery around the gate.
     for (const z of [-depth, depth]) {
       addAdmittedBeam(
         group,
@@ -298,9 +514,8 @@ function openingWidthFor(world: RunWorld, encounter: EncounterSpec): number {
 
 /**
  * Grows blocker forms into the structures that were actually generated around
- * them. Passwords become irregular radial bulkheads tied into lattice/city and
- * chassis machinery, while the central aperture remains protected by spatial
- * admission and is still the only authored continuation route.
+ * them. The blocker itself now closes the cross-section around the aperture;
+ * lattice/chassis fans then carry that bulkhead outward into real machinery.
  */
 export function addLatticeNodeSeals(
   scene: THREE.Scene,
@@ -316,6 +531,8 @@ export function addLatticeNodeSeals(
     primary: new THREE.MeshStandardMaterial({ color: 0x27383e, roughness: 0.52, metalness: 0.64 }),
     conductor: new THREE.MeshStandardMaterial({ color: 0x75503b, roughness: 0.38, metalness: 0.8 }),
     brace: new THREE.MeshStandardMaterial({ color: 0x121f24, roughness: 0.66, metalness: 0.54 }),
+    plate: new THREE.MeshStandardMaterial({ color: 0x0d171b, roughness: 0.7, metalness: 0.52 }),
+    plateInset: new THREE.MeshStandardMaterial({ color: 0x17272d, roughness: 0.6, metalness: 0.62 }),
   };
   const frame = createRouteFrame();
 
@@ -340,6 +557,25 @@ export function addLatticeNodeSeals(
         frame.up,
         frame.forward,
       );
+      const envelope = createSealEnvelope(
+        centre,
+        openingWidth,
+        selected,
+        spec,
+        frame.right,
+        frame.up,
+        frame.forward,
+      );
+
+      addSealedCrossSection(
+        group,
+        centre,
+        frame.right,
+        frame.up,
+        frame.forward,
+        envelope,
+        materials,
+      );
 
       addLocalCollar(
         group,
@@ -355,7 +591,7 @@ export function addLatticeNodeSeals(
       for (const direction of spec.directions) {
         const target = selected.get(direction);
         if (!target) continue;
-        const anchor = anchorForDirection(direction, centre, frame.right, frame.up, openingWidth);
+        const anchor = outerAnchorForDirection(direction, centre, frame.right, frame.up, envelope);
         addFan(
           group,
           direction,

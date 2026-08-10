@@ -13,6 +13,8 @@ interface LocalTarget {
   score: number;
 }
 
+type MutableVec3 = [number, number, number];
+
 function pointDistance(a: Vec3, b: Vec3): number {
   return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
 }
@@ -144,7 +146,7 @@ function strandPoints(
 ): readonly Vec3[] {
   const start = startFor(direction, strand);
   const bias = (strand - 1) * 1.1;
-  const mid: Vec3 = [
+  const mid: MutableVec3 = [
     start[0] + (target.right - start[0]) * 0.48,
     start[1] + (target.up - start[1]) * 0.48,
     start[2] + (target.forward - start[2]) * 0.42,

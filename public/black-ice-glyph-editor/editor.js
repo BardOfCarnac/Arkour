@@ -1,26 +1,27 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const canvas = document.querySelector('#editor');
-const pointName = document.querySelector('#point-name');
-const pointCoords = document.querySelector('#point-coords');
-const viewChip = document.querySelector('#view-chip');
-const heightInput = document.querySelector('#height');
-const heightValue = document.querySelector('#height-value');
-const curveInput = document.querySelector('#curve');
-const curveValue = document.querySelector('#curve-value');
-const fillInput = document.querySelector('#fill');
-const fillValue = document.querySelector('#fill-value');
-const symmetryButton = document.querySelector('#symmetry');
-const flattenButton = document.querySelector('#flatten');
-const resetButton = document.querySelector('#reset');
-const copyButton = document.querySelector('#copy-json');
-const downloadButton = document.querySelector('#download-json');
+const $ = (selector) => document.querySelector(selector);
+const canvas = $('#editor');
+const pointName = $('#point-name');
+const pointCoords = $('#point-coords');
+const viewChip = $('#view-chip');
+const heightInput = $('#height');
+const heightValue = $('#height-value');
+const curveInput = $('#curve');
+const curveValue = $('#curve-value');
+const fillInput = $('#fill');
+const fillValue = $('#fill-value');
+const symmetryButton = $('#symmetry');
+const flattenButton = $('#flatten');
+const resetButton = $('#reset');
+const copyButton = $('#copy-json');
+const downloadButton = $('#download-json');
+const toolsOpen = $('#tools-open');
+const toolsClose = $('#tools-close');
+const toolsDrawer = $('#tools-drawer');
+const drawerBackdrop = $('#drawer-backdrop');
 const viewButtons = Array.from(document.querySelectorAll('.view-button'));
-const toolsOpen = document.querySelector('#tools-open');
-const toolsClose = document.querySelector('#tools-close');
-const toolsDrawer = document.querySelector('#tools-drawer');
-const drawerBackdrop = document.querySelector('#drawer-backdrop');
 
 const STORAGE_KEY_V1 = 'arkour-black-ice-glyph-editor-v1';
 const STORAGE_KEY_V2 = 'arkour-black-ice-glyph-editor-v2';
@@ -69,6 +70,14 @@ const STRUCTURE_PAIRS = [
   ['core', 'leftRearPit'], ['core', 'frontLeftPit'],
 ];
 
+const SURFACE_EDGE_ANCHORS = [
+  'innerFront', 'innerFront',
+  'core',
+  'innerRear', 'innerRear', 'innerRear', 'innerRear',
+  'core',
+  'innerFront', 'innerFront',
+];
+
 const STARFISH_V2 = {
   format: 'arkour-black-ice-glyph',
   version: 2,
@@ -96,26 +105,23 @@ const STARFISH_V2 = {
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const mix = (a, b, t) => a + (b - a) * t;
+const midpoint = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 });
+const lerpPoint = (a, b, t) => ({ x: mix(a.x, b.x, t), y: mix(a.y, b.y, t), z: mix(a.z, b.z, t) });
+
 let state = { ...clone(STARFISH_V2), view: 'top' };
 let selectedPoint = 'frontTip';
 let activeDrag = null;
+
+function average(points) {
+  const total = points.reduce((sum, p) => ({ x: sum.x + p.x, y: sum.y + p.y, z: sum.z + p.z }), { x: 0, y: 0, z: 0 });
+  const n = Math.max(1, points.length);
+  return { x: total.x / n, y: total.y / n, z: total.z / n };
+}
 
 function pointKind(key) {
   if (TIP_KEYS.has(key)) return 'tip';
   if (PIT_KEYS.has(key)) return 'pit';
   return 'internal';
-}
-function midpoint(a, b) {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
-}
-function average(points) {
-  const out = { x: 0, y: 0, z: 0 };
-  for (const point of points) { out.x += point.x; out.y += point.y; out.z += point.z; }
-  const n = Math.max(1, points.length);
-  return { x: out.x / n, y: out.y / n, z: out.z / n };
-}
-function lerpPoint(a, b, t) {
-  return { x: mix(a.x, b.x, t), y: mix(a.y, b.y, t), z: mix(a.z, b.z, t) };
 }
 
 function symmetrisePoints(points) {
@@ -193,15 +199,18 @@ function loadState() {
       const migrated = migrateV1(JSON.parse(rawV1));
       if (migrated) state = migrated;
     }
-  } catch (error) { console.warn('Could not load Black ICE glyph state', error); }
+  } catch (error) {
+    console.warn('Could not load Black ICE glyph state', error);
+  }
 }
+
 function saveState() {
   try { localStorage.setItem(STORAGE_KEY_V2, JSON.stringify(state)); }
   catch (error) { console.warn('Could not save Black ICE glyph state', error); }
 }
 
-function toWorld(point) { return new THREE.Vector3(point.x, point.y, point.z); }
-function fromWorld(vector) { return { x: vector.x, y: vector.y, z: vector.z }; }
+const toWorld = (point) => new THREE.Vector3(point.x, point.y, point.z);
+const fromWorld = (vector) => ({ x: vector.x, y: vector.y, z: vector.z });
 
 function smoothClosed(points, curve = state.curve, stepsPerSegment = 6) {
   const result = [];
@@ -274,29 +283,49 @@ function disposeGroup(group) {
     });
   }
 }
-function lineLoopGeometry(points) { return new THREE.BufferGeometry().setFromPoints([...points, points[0]]); }
+
+const lineLoopGeometry = (points) => new THREE.BufferGeometry().setFromPoints([...points, points[0]]);
+
 function surfaceGeometry(contour) {
-  const shape2 = contour.map((p) => new THREE.Vector2(p.x, p.z));
-  const triangles = THREE.ShapeUtils.triangulateShape(shape2, []);
-  const positions = new Float32Array(contour.length * 3);
-  contour.forEach((p, index) => {
-    positions[index * 3] = p.x;
-    positions[index * 3 + 1] = p.y;
-    positions[index * 3 + 2] = p.z;
-  });
-  const indices = [];
-  triangles.forEach((triangle) => indices.push(...triangle));
+  const edgeCount = CONTOUR_ORDER.length;
+  const stepsPerEdge = Math.max(1, Math.floor(contour.length / edgeCount));
+  const positions = [];
+  const pushTriangle = (a, b, c) => {
+    positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+  };
+
+  for (let edge = 0; edge < edgeCount; edge += 1) {
+    const anchorKey = SURFACE_EDGE_ANCHORS[edge];
+    const anchor = toWorld(state.points[anchorKey]);
+    const start = edge * stepsPerEdge;
+
+    for (let step = 0; step < stepsPerEdge; step += 1) {
+      const a = contour[start + step];
+      const b = step === stepsPerEdge - 1
+        ? contour[((edge + 1) % edgeCount) * stepsPerEdge]
+        : contour[start + step + 1];
+      pushTriangle(anchor, a, b);
+    }
+
+    const nextAnchorKey = SURFACE_EDGE_ANCHORS[(edge + 1) % edgeCount];
+    if (nextAnchorKey !== anchorKey) {
+      const sharedContourPoint = toWorld(state.points[CONTOUR_ORDER[(edge + 1) % edgeCount]]);
+      pushTriangle(anchor, sharedContourPoint, toWorld(state.points[nextAnchorKey]));
+    }
+  }
+
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setIndex(indices);
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.computeVertexNormals();
   return geometry;
 }
+
 function structureGeometry() {
   const points = [];
   for (const [a, b] of STRUCTURE_PAIRS) points.push(toWorld(state.points[a]), toWorld(state.points[b]));
   return new THREE.BufferGeometry().setFromPoints(points);
 }
+
 function buildGlyph() {
   disposeGroup(glyphGroup);
   const contour = smoothClosed(CONTOUR_ORDER.map((key) => toWorld(state.points[key])));
@@ -307,6 +336,7 @@ function buildGlyph() {
     new THREE.LineSegments(structureGeometry(), structureMaterial),
   );
 }
+
 function handleColor(key) {
   if (key === selectedPoint) return 0xffffff;
   const kind = pointKind(key);
@@ -314,6 +344,7 @@ function handleColor(key) {
   if (kind === 'internal') return internalColor;
   return cyan;
 }
+
 function handleRadius(key) {
   if (key === selectedPoint) return 4.7;
   const kind = pointKind(key);
@@ -321,6 +352,7 @@ function handleRadius(key) {
   if (kind === 'internal') return 3.8;
   return 3.6;
 }
+
 function buildHandles() {
   disposeGroup(handleGroup);
   handleMeshes.clear();
@@ -358,7 +390,12 @@ function updateUi() {
   viewChip.textContent = state.view.toUpperCase();
   viewButtons.forEach((button) => button.classList.toggle('active', button.dataset.view === state.view));
 }
-function renderEditor() { buildGlyph(); buildHandles(); updateUi(); }
+
+function renderEditor() {
+  buildGlyph();
+  buildHandles();
+  updateUi();
+}
 
 function resize() {
   const rect = canvas.getBoundingClientRect();
@@ -372,13 +409,17 @@ function snapView(view) {
   state.view = view;
   const distance = 390;
   if (view === 'front') {
-    camera.up.set(0, 1, 0); camera.position.set(0, 0, distance);
+    camera.up.set(0, 1, 0);
+    camera.position.set(0, 0, distance);
   } else if (view === 'side') {
-    camera.up.set(0, 1, 0); camera.position.set(distance, 0, 0);
+    camera.up.set(0, 1, 0);
+    camera.position.set(distance, 0, 0);
   } else if (view === 'top') {
-    camera.up.set(0, 0, -1); camera.position.set(0, distance, 0.001);
+    camera.up.set(0, 0, -1);
+    camera.position.set(0, distance, 0.001);
   } else {
-    camera.up.set(0, 1, 0); camera.position.set(245, 210, 335);
+    camera.up.set(0, 1, 0);
+    camera.position.set(245, 210, 335);
   }
   controls.target.set(0, 0, 0);
   controls.enabled = view === 'orbit';
@@ -393,16 +434,19 @@ const pointer = new THREE.Vector2();
 const dragPlane = new THREE.Plane();
 const dragOffset = new THREE.Vector3();
 const dragIntersection = new THREE.Vector3();
+
 function pointerNdc(event) {
   const rect = canvas.getBoundingClientRect();
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 }
+
 function pickPoint(event) {
   pointerNdc(event);
   raycaster.setFromCamera(pointer, camera);
   return raycaster.intersectObjects(Array.from(handleMeshes.values()), false)[0]?.object?.userData?.pointKey ?? null;
 }
+
 function configureDragPlane(key) {
   const world = toWorld(state.points[key]);
   if (state.view === 'front') dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 0, 1), world);
@@ -414,6 +458,7 @@ function configureDragPlane(key) {
     dragPlane.setFromNormalAndCoplanarPoint(normal, world);
   }
 }
+
 function setPoint(key, point) {
   const next = {
     x: clamp(point.x, -175, 175),
@@ -422,9 +467,7 @@ function setPoint(key, point) {
   };
   if (state.symmetry && CENTRELINE_KEYS.has(key)) next.x = 0;
   state.points[key] = next;
-  if (state.symmetry && MIRROR[key]) {
-    state.points[MIRROR[key]] = { x: -next.x, y: next.y, z: next.z };
-  }
+  if (state.symmetry && MIRROR[key]) state.points[MIRROR[key]] = { x: -next.x, y: next.y, z: next.z };
   saveState();
   renderEditor();
 }
@@ -444,6 +487,7 @@ canvas.addEventListener('pointerdown', (event) => {
   canvas.setPointerCapture?.(event.pointerId);
   renderEditor();
 });
+
 canvas.addEventListener('pointermove', (event) => {
   if (!activeDrag || activeDrag.pointerId !== event.pointerId) return;
   event.preventDefault();
@@ -452,6 +496,7 @@ canvas.addEventListener('pointermove', (event) => {
   if (!raycaster.ray.intersectPlane(dragPlane, dragIntersection)) return;
   setPoint(activeDrag.key, fromWorld(dragIntersection.clone().add(dragOffset)));
 });
+
 function endDrag(event) {
   if (!activeDrag) return;
   if (event?.pointerId !== undefined && event.pointerId !== activeDrag.pointerId) return;
@@ -462,15 +507,26 @@ function endDrag(event) {
 }
 canvas.addEventListener('pointerup', endDrag);
 canvas.addEventListener('pointercancel', endDrag);
-canvas.addEventListener('lostpointercapture', () => { activeDrag = null; controls.enabled = state.view === 'orbit'; });
+canvas.addEventListener('lostpointercapture', () => {
+  activeDrag = null;
+  controls.enabled = state.view === 'orbit';
+});
 
 heightInput.addEventListener('input', () => {
   const next = clone(state.points[selectedPoint]);
   next.y = Number(heightInput.value);
   setPoint(selectedPoint, next);
 });
-curveInput.addEventListener('input', () => { state.curve = Number(curveInput.value); saveState(); renderEditor(); });
-fillInput.addEventListener('input', () => { state.fill = Number(fillInput.value); saveState(); renderEditor(); });
+curveInput.addEventListener('input', () => {
+  state.curve = Number(curveInput.value);
+  saveState();
+  renderEditor();
+});
+fillInput.addEventListener('input', () => {
+  state.fill = Number(fillInput.value);
+  saveState();
+  renderEditor();
+});
 symmetryButton.addEventListener('click', () => {
   state.symmetry = !state.symmetry;
   if (state.symmetry) symmetrisePoints(state.points);
@@ -479,12 +535,15 @@ symmetryButton.addEventListener('click', () => {
 });
 flattenButton.addEventListener('click', () => {
   POINT_ORDER.forEach((key) => { state.points[key].y = 0; });
-  saveState(); renderEditor();
+  saveState();
+  renderEditor();
 });
 resetButton.addEventListener('click', () => {
   state = { ...clone(STARFISH_V2), view: 'top' };
   selectedPoint = 'frontTip';
-  saveState(); snapView('top'); renderEditor();
+  saveState();
+  snapView('top');
+  renderEditor();
 });
 
 function exportDefinition() {
@@ -499,26 +558,38 @@ function exportDefinition() {
     points: clone(state.points),
   };
 }
+
 async function copyText(text) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
   const textarea = document.createElement('textarea');
   textarea.value = text;
-  textarea.style.position = 'fixed'; textarea.style.opacity = '0';
-  document.body.appendChild(textarea); textarea.select(); document.execCommand('copy'); textarea.remove();
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  textarea.remove();
 }
+
 copyButton.addEventListener('click', async () => {
   try {
     await copyText(JSON.stringify(exportDefinition(), null, 2));
     copyButton.textContent = 'COPIED';
     setTimeout(() => { copyButton.textContent = 'COPY JSON V2'; }, 900);
-  } catch (error) { console.warn('Could not copy Black ICE glyph', error); }
+  } catch (error) {
+    console.warn('Could not copy Black ICE glyph', error);
+  }
 });
+
 downloadButton.addEventListener('click', () => {
   const blob = new Blob([`${JSON.stringify(exportDefinition(), null, 2)}\n`], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
-  anchor.href = url; anchor.download = 'arkour-black-ice-starfish-v2.json';
-  document.body.appendChild(anchor); anchor.click(); anchor.remove();
+  anchor.href = url;
+  anchor.download = 'arkour-black-ice-starfish-v2.json';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 500);
 });
 
@@ -536,6 +607,7 @@ loadState();
 resize();
 renderEditor();
 snapView(state.view || 'top');
+
 function animate() {
   controls.update();
   renderer.render(scene, camera);

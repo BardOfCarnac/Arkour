@@ -349,8 +349,6 @@ function addMachineryFacade(
   const collarOffset = SEAL_DEPTH * 0.5 + 2.1;
   const left = centre.clone().addScaledVector(right, -innerSide - 0.9).addScaledVector(forward, -collarOffset);
   const rightPoint = centre.clone().addScaledVector(right, innerSide + 0.9).addScaledVector(forward, -collarOffset);
-  const top = centre.clone().addScaledVector(up, innerVertical + 0.9).addScaledVector(forward, -collarOffset);
-  const bottom = centre.clone().addScaledVector(up, -innerVertical - 0.9).addScaledVector(forward, -collarOffset);
   const topLeft = left.clone().addScaledVector(up, innerVertical + 0.9);
   const bottomLeft = left.clone().addScaledVector(up, -innerVertical - 0.9);
   const topRight = rightPoint.clone().addScaledVector(up, innerVertical + 0.9);

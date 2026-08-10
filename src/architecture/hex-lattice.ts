@@ -1,5 +1,5 @@
-import type { ScenePiece, Vec3 } from '../run/scene-plan';
-import type { RunWorld } from '../run/types';
+import type { ScenePiece } from '../run/scene-plan';
+import type { RunWorld, Vec3 } from '../run/types';
 
 const GRID_EXTENT = 34;
 const GRID_OFFSETS = [-24, -16, -10, 10, 16, 24] as const;

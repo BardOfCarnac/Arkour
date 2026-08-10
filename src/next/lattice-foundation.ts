@@ -12,7 +12,9 @@ interface RuntimeBridge {
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
   routes: Map<string, RuntimeRoute>;
+  timeline: number;
   pendingEncounter?: EncounterSpec;
+  timelineForRouteDistance(routeId: string, distance: number): number;
 }
 
 function addWireAccents(root: THREE.Object3D): void {
@@ -40,7 +42,7 @@ function addWireAccents(root: THREE.Object3D): void {
 export function attachLatticeFoundation(runtime: NextAcceptanceRuntime, world: RunWorld): void {
   const bridge = runtime as unknown as RuntimeBridge;
   const interactions = generateNodeFormPlan(world);
-  const lattice = addLatticeVolumeCity(bridge.scene, world, { seed: 4712, density: 0.31 });
+  const lattice = addLatticeVolumeCity(bridge.scene, world, { seed: 4712, density: 0.18 });
   addWireAccents(lattice);
 
   const holds = new HoldCircuitSystem(bridge.scene, bridge.routes, world, interactions);
@@ -56,6 +58,10 @@ export function attachLatticeFoundation(runtime: NextAcceptanceRuntime, world: R
     if (encounter && camera instanceof THREE.PerspectiveCamera) {
       const pose = holds.sample(encounter.id, performance.now() / 1000);
       if (pose) {
+        // The canonical timeline now genuinely sits at the hold circuit anchor,
+        // not at the old stationary near-node pause point.
+        bridge.timeline = bridge.timelineForRouteDistance(pose.route.id, pose.distance);
+
         sampleRouteFrameAtDistance(pose.route, pose.distance, holdFrame);
         runnerPosition.copy(holdFrame.position)
           .addScaledVector(holdFrame.right, pose.offset.right)

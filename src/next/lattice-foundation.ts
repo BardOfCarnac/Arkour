@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { generateNodeFormPlan } from '../architecture/node-forms';
+import { addPasswordBlockers } from '../run/password-blockers';
 import { createRouteFrame, sampleRouteFrameAtDistance } from '../run/route-frame';
 import type { RuntimeRoute } from '../run/route';
 import type { EncounterSpec, RunWorld } from '../run/types';
@@ -46,6 +47,7 @@ export function attachLatticeFoundation(runtime: NextAcceptanceRuntime, world: R
   addWireAccents(lattice);
 
   const holds = new HoldCircuitSystem(bridge.scene, bridge.routes, world, interactions);
+  const blockers = addPasswordBlockers(bridge.scene, bridge.routes, world);
   const originalRender = bridge.renderer.render.bind(bridge.renderer);
   const holdFrame = createRouteFrame();
   const nodeFrame = createRouteFrame();
@@ -58,8 +60,6 @@ export function attachLatticeFoundation(runtime: NextAcceptanceRuntime, world: R
     if (encounter && camera instanceof THREE.PerspectiveCamera) {
       const pose = holds.sample(encounter.id, performance.now() / 1000);
       if (pose) {
-        // The canonical timeline now genuinely sits at the hold circuit anchor,
-        // not at the old stationary near-node pause point.
         bridge.timeline = bridge.timelineForRouteDistance(pose.route.id, pose.distance);
 
         sampleRouteFrameAtDistance(pose.route, pose.distance, holdFrame);
@@ -82,14 +82,33 @@ export function attachLatticeFoundation(runtime: NextAcceptanceRuntime, world: R
     originalRender(scene, camera);
   }) as THREE.WebGLRenderer['render'];
 
+  let previousEncounterId: string | undefined;
+  let previousTimeline = bridge.timeline;
+  let previousNow = performance.now();
+
   // RunnerEntity updates earlier in the animation frame. Applying the sampled
   // offset afterwards means the glyph follows the physical circuit without
-  // duplicating its pose/animation logic.
-  const updateRunner = (): void => {
+  // duplicating its pose/animation logic. This loop also owns Password gate
+  // state so leaving a hold opens the blocker and Reset closes every gate again.
+  const updateRunner = (now: number): void => {
+    const dt = Math.min(0.05, Math.max(0, (now - previousNow) / 1000));
+    previousNow = now;
+    blockers.update(dt);
+
     const encounter = bridge.pendingEncounter;
+    if (!encounter && previousEncounterId) {
+      blockers.resolve(previousEncounterId);
+      previousEncounterId = undefined;
+    } else if (encounter) {
+      previousEncounterId = encounter.id;
+    }
+
+    if (bridge.timeline < 0.02 && previousTimeline > 0.08) blockers.resetAll();
+    previousTimeline = bridge.timeline;
+
     const runner = bridge.scene.getObjectByName('arkour-runner');
     if (encounter && runner) {
-      const pose = holds.sample(encounter.id, performance.now() / 1000);
+      const pose = holds.sample(encounter.id, now / 1000);
       if (pose) {
         sampleRouteFrameAtDistance(pose.route, pose.distance, holdFrame);
         runner.position.copy(holdFrame.position)

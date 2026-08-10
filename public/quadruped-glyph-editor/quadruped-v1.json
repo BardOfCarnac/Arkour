@@ -1,0 +1,25 @@
+{
+  "format": "arkour-black-ice-glyph",
+  "version": 2,
+  "rig": "quadruped-15",
+  "symmetry": true,
+  "curve": 0.34,
+  "fill": 0.12,
+  "points": {
+    "nose": { "x": 0, "y": 0, "z": -138 },
+    "rightEar": { "x": 34, "y": 0, "z": -106 },
+    "rightNeckPit": { "x": 27, "y": 0, "z": -63 },
+    "rightFore": { "x": 76, "y": 0, "z": -29 },
+    "rightWaistPit": { "x": 33, "y": 0, "z": 19 },
+    "rightHind": { "x": 66, "y": 0, "z": 78 },
+    "tail": { "x": 0, "y": 0, "z": 128 },
+    "leftHind": { "x": -66, "y": 0, "z": 78 },
+    "leftWaistPit": { "x": -33, "y": 0, "z": 19 },
+    "leftFore": { "x": -76, "y": 0, "z": -29 },
+    "leftNeckPit": { "x": -27, "y": 0, "z": -63 },
+    "leftEar": { "x": -34, "y": 0, "z": -106 },
+    "chest": { "x": 0, "y": 0, "z": -46 },
+    "core": { "x": 0, "y": 0, "z": 8 },
+    "pelvis": { "x": 0, "y": 0, "z": 61 }
+  }
+}

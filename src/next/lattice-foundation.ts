@@ -9,7 +9,7 @@ import { addUndergroundDepthLighting } from './depth-lighting';
 import { HoldCircuitSystem, type HoldPose } from './hold-circuits';
 import { addSparseLatticeChassis } from './lattice-chassis';
 import { addLatticeVolumeCity } from './lattice-volume';
-import { addMacrostructureProxies } from './macrostructure-proxies';
+import { addMacrostructureCity } from './macrostructure-city';
 import { addLatticeNodeSeals, collectAttachmentTargets } from './node-seals';
 import { createNextPresentationKeepout } from './presentation-keepout';
 
@@ -58,10 +58,9 @@ export class LatticeFoundation {
     const interactions = generateNodeFormPlan(world);
     const spatialKeepout = keepout ?? createNextPresentationKeepout(world, routes);
 
-    // Macroarchitecture gets first claim on safe world-space volume. The current
-    // shapes are deliberately crude proxies: their job is to prove ownership and
-    // scale before any of the experimental building vocabularies are promoted.
-    const macrostructures = addMacrostructureProxies(scene, world, spatialKeepout);
+    // Macroarchitecture owns safe world-space regions before the lattice infill.
+    // The vocabulary can evolve without changing this ordering or admission rule.
+    const macrostructures = addMacrostructureCity(scene, world, spatialKeepout);
     const lattice = addLatticeVolumeCity(scene, world, {
       seed: 4712,
       density: 0.18,

@@ -1,53 +1,39 @@
 import * as THREE from 'three';
 import type { RuntimeRoute } from './route';
 import { RUN_CAMERA_PROFILE } from './camera-profile';
-import {
-  cameraCollisionPenalty,
-  cameraPointIsBlocked,
-  cameraSegmentIsClear,
-  type CameraObstacleField,
-} from './camera-obstacles';
+import type { CameraObstacleField } from './camera-obstacles';
 import { createRouteFrame, sampleRouteFrameAtDistance } from './route-frame';
 
-interface SafeCameraCandidate {
-  right: number;
-  up: number;
-  trail: number;
-  bias: number;
-  ignoreHold?: boolean;
-}
+const CAMERA_FORWARD = new THREE.Vector3(0, 0, -1);
+const WORLD_VIEW_OFFSET = new THREE.Vector3(0, 0, 1);
+const LOOK_AHEAD_DISTANCE = 11;
+const POSITION_RESPONSE = 9;
+const ROTATION_RESPONSE = 7;
 
-const SAFE_CAMERA_CANDIDATES: readonly SafeCameraCandidate[] = [
-  { right: 0, up: 1.65, trail: 4.2, bias: 0 },
-  { right: 0, up: 0.85, trail: 4.2, bias: 0.12 },
-  { right: 0, up: 2.45, trail: 4.2, bias: 0.18 },
-  { right: 0.9, up: 1.65, trail: 4.2, bias: 0.28 },
-  { right: -0.9, up: 1.65, trail: 4.2, bias: 0.28 },
-  { right: 0.95, up: 0.7, trail: 4.2, bias: 0.42 },
-  { right: -0.95, up: 0.7, trail: 4.2, bias: 0.42 },
-  { right: 0.95, up: 2.55, trail: 4.2, bias: 0.48 },
-  { right: -0.95, up: 2.55, trail: 4.2, bias: 0.48 },
-  { right: 0, up: 1.65, trail: 3.25, bias: 0.62 },
-  { right: 1.45, up: 1.4, trail: 3.45, bias: 0.78 },
-  { right: -1.45, up: 1.4, trail: 3.45, bias: 0.78 },
-  { right: 0, up: 3.1, trail: 3.15, bias: 0.92 },
-  { right: 0, up: -0.25, trail: 3.0, bias: 1.05 },
-  { right: 0, up: 0, trail: 0, bias: 12, ignoreHold: true },
-];
-
+/**
+ * Deterministic route-following camera.
+ *
+ * Scenery is already generated around a reserved route/camera corridor, so the
+ * camera should not continually dodge between collision candidates. The route is
+ * the authority: transit follows one smooth target line, while position and gaze
+ * are damped so the occasional authored direction change reads as one broad turn
+ * rather than a sequence of snaps.
+ *
+ * The obstacle field remains in the constructor for API compatibility with the
+ * runtime, but normal camera motion deliberately does not react to individual
+ * scenery objects. If scenery reaches this path, the scenery admission/keep-out
+ * pass is the layer that should be fixed.
+ */
 export class CameraRig {
   private readonly frame = createRouteFrame();
   private readonly lookPoint = new THREE.Vector3();
   private readonly aheadTangent = new THREE.Vector3();
-  private readonly candidatePosition = new THREE.Vector3();
-  private readonly safePosition = new THREE.Vector3();
-  private readonly proposedPosition = new THREE.Vector3();
-  private readonly turn = new THREE.Vector3();
-  private roll = 0;
+  private readonly travelDirection = new THREE.Vector3();
+  private readonly desiredPosition = new THREE.Vector3();
+  private readonly desiredQuaternion = new THREE.Quaternion();
   private initialized = false;
-  private selectedCandidateIndex = 0;
 
-  constructor(private readonly obstacles: CameraObstacleField) {}
+  constructor(_obstacles: CameraObstacleField) {}
 
   update(
     camera: THREE.PerspectiveCamera,
@@ -59,76 +45,43 @@ export class CameraRig {
   ): void {
     sampleRouteFrameAtDistance(route, distance, this.frame);
 
-    const lookDistance = Math.min(route.length, distance + 9);
+    const lookDistance = Math.min(route.length, distance + LOOK_AHEAD_DISTANCE);
     route.pointAtDistance(lookDistance, this.lookPoint);
     route.tangentAtDistance(lookDistance, this.aheadTangent);
 
-    this.chooseSafePosition(camera, held, elapsed);
+    // Blend the current direction with a short look-ahead tangent. Straight runs
+    // remain mathematically straight; a real route bend starts turning the view
+    // before the exact segment boundary instead of changing direction in one frame.
+    this.travelDirection.copy(this.frame.forward)
+      .lerp(this.aheadTangent, 0.38)
+      .normalize();
 
-    if (!this.initialized) {
-      camera.position.copy(this.safePosition);
-      this.initialized = true;
-    } else {
-      const smoothing = 1 - Math.exp(-dt * 7.5);
-      this.proposedPosition.copy(camera.position).lerp(this.safePosition, smoothing);
+    this.desiredPosition.copy(this.frame.position)
+      .addScaledVector(this.travelDirection, -RUN_CAMERA_PROFILE.trailDistance)
+      .addScaledVector(WORLD_VIEW_OFFSET, RUN_CAMERA_PROFILE.upOffset);
 
-      if (
-        cameraPointIsBlocked(camera.position, this.obstacles)
-        || !cameraSegmentIsClear(camera.position, this.proposedPosition, this.obstacles)
-      ) {
-        camera.position.copy(this.safePosition);
-      } else {
-        camera.position.copy(this.proposedPosition);
-      }
+    // Holding movement may still breathe gently around the route. It is applied
+    // continuously rather than by changing camera modes or candidate positions.
+    if (held) {
+      const holdRight = Math.sin(elapsed * 0.8) * RUN_CAMERA_PROFILE.holdRightAmplitude;
+      const holdUp = Math.cos(elapsed * 0.55) * RUN_CAMERA_PROFILE.holdUpAmplitude;
+      this.desiredPosition
+        .addScaledVector(this.frame.right, holdRight)
+        .addScaledVector(this.frame.up, holdUp);
     }
 
-    camera.lookAt(this.lookPoint);
+    this.desiredQuaternion.setFromUnitVectors(CAMERA_FORWARD, this.travelDirection);
 
-    this.turn.crossVectors(this.frame.forward, this.aheadTangent);
-    const targetRoll = THREE.MathUtils.clamp(this.turn.dot(this.frame.up) * 2.2, -0.28, 0.28);
-    this.roll = THREE.MathUtils.lerp(this.roll, targetRoll, 1 - Math.exp(-dt * 4.5));
-    camera.rotateZ(this.roll);
-  }
+    if (!this.initialized) {
+      camera.position.copy(this.desiredPosition);
+      camera.quaternion.copy(this.desiredQuaternion);
+      this.initialized = true;
+      return;
+    }
 
-  private chooseSafePosition(
-    camera: THREE.PerspectiveCamera,
-    held: boolean,
-    elapsed: number,
-  ): void {
-    const holdRight = held
-      ? Math.sin(elapsed * 0.8) * RUN_CAMERA_PROFILE.holdRightAmplitude
-      : 0;
-    const holdUp = held
-      ? Math.cos(elapsed * 0.55) * RUN_CAMERA_PROFILE.holdUpAmplitude
-      : 0;
-
-    let bestScore = Number.POSITIVE_INFINITY;
-    let bestIndex = 0;
-
-    SAFE_CAMERA_CANDIDATES.forEach((candidate, index) => {
-      const right = candidate.right + (candidate.ignoreHold ? 0 : holdRight);
-      const up = candidate.up + (candidate.ignoreHold ? 0 : holdUp);
-
-      this.candidatePosition.copy(this.frame.position)
-        .addScaledVector(this.frame.right, right)
-        .addScaledVector(this.frame.up, up)
-        .addScaledVector(this.frame.forward, -candidate.trail);
-
-      let score = cameraCollisionPenalty(this.candidatePosition, this.obstacles)
-        + candidate.bias;
-
-      if (this.initialized) {
-        score += this.candidatePosition.distanceTo(camera.position) * 0.025;
-        if (index !== this.selectedCandidateIndex) score += 0.16;
-      }
-
-      if (score < bestScore) {
-        bestScore = score;
-        bestIndex = index;
-        this.safePosition.copy(this.candidatePosition);
-      }
-    });
-
-    this.selectedCandidateIndex = bestIndex;
+    const positionAlpha = 1 - Math.exp(-dt * POSITION_RESPONSE);
+    const rotationAlpha = 1 - Math.exp(-dt * ROTATION_RESPONSE);
+    camera.position.lerp(this.desiredPosition, positionAlpha);
+    camera.quaternion.slerp(this.desiredQuaternion, rotationAlpha);
   }
 }

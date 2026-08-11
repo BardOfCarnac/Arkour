@@ -180,17 +180,18 @@ function addCellMachine(
 
 /**
  * Builds one global lattice volume shared by every branch. Occupancy is chosen
- * in absolute world space, not route-relative space. Routes and encounter zones
- * carve corridors out of the volume; occupied cells are now assembled from a
- * sober industrial component vocabulary instead of generic box/shaft props.
+ * in absolute world space, not route-relative space. Routes, encounters and any
+ * accepted macrostructure claims carve volume before ordinary machinery cells
+ * are admitted.
  */
 export function addLatticeVolumeCity(
   scene: THREE.Scene,
   world: RunWorld,
-  options: { seed?: number; density?: number } = {},
+  options: { seed?: number; density?: number; claims?: readonly THREE.Box3[] } = {},
 ): THREE.Group {
   const seed = options.seed ?? 4712;
   const density = THREE.MathUtils.clamp(options.density ?? 0.34, 0.12, 0.6);
+  const claims = options.claims ?? [];
   const segments = routeSegments(world);
   const encounters = encounterPoints(world);
   const bounds = routeBounds(world);
@@ -213,6 +214,7 @@ export function addLatticeVolumeCity(
         if (!bounds.containsPoint(position)) continue;
         if (distanceToRoutes(position, segments) < ROUTE_CLEARANCE) continue;
         if (encounters.some((point) => point.distanceTo(position) < NODE_CLEARANCE)) continue;
+        if (claims.some((claim) => claim.containsPoint(position))) continue;
 
         const h = hash(seed, q, r, layer);
         if (unit(h) > density) continue;

@@ -2,11 +2,14 @@ import * as THREE from 'three';
 import { collectCameraObstacles } from './camera-obstacles';
 import { CameraRig } from './camera-rig';
 import { RunInput, type RunAction } from './input';
+import { addPasswordBlockers, type PasswordBlockers } from './password-blockers';
 import { RuntimeRoute } from './route';
 import { addScenePlan } from './scenery';
 import type { ScenePlan } from './scene-plan';
 import type { EncounterSpec, JunctionSpec, RunState, RunWorld } from './types';
 import { addParticles, addRouteGeometry } from './world';
+
+const PASSWORD_STOP_CLEARANCE = 7;
 
 interface RuntimeElements {
   canvasHost: HTMLElement;
@@ -28,8 +31,10 @@ export class RunRuntime {
   private readonly routes = new Map<string, RuntimeRoute>();
   private readonly routeMeshes: Map<string, THREE.Mesh>;
   private readonly cameraRig: CameraRig;
+  private readonly passwordBlockers: PasswordBlockers;
   private readonly input = new RunInput();
   private readonly clock = new THREE.Clock();
+  private readonly resolvedEncounters = new Set<string>();
 
   private currentRoute: RuntimeRoute;
   private distance = 0;
@@ -40,6 +45,7 @@ export class RunRuntime {
   private selectedExitIndex = 0;
   private activeJunction: JunctionSpec | null = null;
   private activeEncounter: EncounterSpec | null = null;
+  private blockingEncounter: EncounterSpec | null = null;
   private frame = 0;
   private elapsed = 0;
   private fps = 0;
@@ -68,6 +74,12 @@ export class RunRuntime {
 
     addScenePlan(this.scene, this.routes, scenePlan);
     this.cameraRig = new CameraRig(collectCameraObstacles(this.scene));
+
+    // Dynamic logical blockers are deliberately added after the static camera
+    // obstacle field is collected. Their surrounding architecture is already
+    // collision-safe; the moving shutter itself occupies the route by design.
+    this.passwordBlockers = addPasswordBlockers(this.scene, this.routes, world);
+
     addParticles(this.scene);
     this.routeMeshes = addRouteGeometry(this.scene, this.routes);
     this.highlightRoute(this.currentRoute.id);
@@ -95,6 +107,7 @@ export class RunRuntime {
     this.elapsed += dt;
 
     if (!this.paused) this.update(dt);
+    this.passwordBlockers.update(dt);
 
     this.cameraRig.update(this.camera, this.currentRoute, this.distance, dt, this.held, this.elapsed);
     this.updateBranchButtons();
@@ -106,9 +119,11 @@ export class RunRuntime {
     this.findJunction();
     this.findEncounter();
 
+    const previousDistance = this.distance;
     if (!this.held) this.distance += this.speed * dt;
+    this.enforcePasswordBlock(previousDistance);
 
-    if (this.activeJunction) {
+    if (this.activeJunction && !this.blockingEncounter) {
       const junctionDistance = this.activeJunction.at * this.currentRoute.length;
       if (this.distance >= junctionDistance) {
         const exit = this.activeJunction.exits[this.selectedExitIndex];
@@ -121,8 +136,37 @@ export class RunRuntime {
       this.elements.holdButton.textContent = 'Resume';
     }
 
-    if (this.held) this.state = 'HELD';
+    if (this.blockingEncounter) this.state = 'BLOCKED';
+    else if (this.held) this.state = 'HELD';
     this.updateHud();
+  }
+
+  private enforcePasswordBlock(previousDistance: number): void {
+    if (this.blockingEncounter || this.held) return;
+
+    const blocker = (this.currentRoute.spec.encounters ?? [])
+      .filter((encounter) => (
+        encounter.type === 'password'
+        && !this.resolvedEncounters.has(encounter.id)
+      ))
+      .map((encounter) => {
+        const encounterDistance = encounter.at * this.currentRoute.length;
+        return {
+          encounter,
+          stopDistance: Math.max(0, encounterDistance - PASSWORD_STOP_CLEARANCE),
+        };
+      })
+      .sort((a, b) => a.stopDistance - b.stopDistance)
+      .find(({ stopDistance }) => previousDistance <= stopDistance && this.distance >= stopDistance);
+
+    if (!blocker) return;
+
+    this.distance = blocker.stopDistance;
+    this.blockingEncounter = blocker.encounter;
+    this.activeEncounter = blocker.encounter;
+    this.held = true;
+    this.state = 'BLOCKED';
+    this.elements.holdButton.textContent = 'Resolve';
   }
 
   private findJunction(): void {
@@ -145,7 +189,7 @@ export class RunRuntime {
         this.activeJunction = junction;
         this.renderBranchChoices();
       }
-      this.state = 'APPROACH';
+      if (!this.blockingEncounter) this.state = 'APPROACH';
     } else {
       if (this.activeJunction) this.clearBranchChoices();
       this.activeJunction = null;
@@ -153,6 +197,12 @@ export class RunRuntime {
   }
 
   private findEncounter(): void {
+    if (this.blockingEncounter) {
+      this.activeEncounter = this.blockingEncounter;
+      this.state = 'BLOCKED';
+      return;
+    }
+
     const encounters = this.currentRoute.spec.encounters ?? [];
     let nearest: EncounterSpec | null = null;
     let nearestDistance = Number.POSITIVE_INFINITY;
@@ -181,6 +231,7 @@ export class RunRuntime {
     this.distance = 0;
     this.activeJunction = null;
     this.activeEncounter = null;
+    this.blockingEncounter = null;
     this.state = 'RESUME';
     this.clearBranchChoices();
     this.highlightRoute(routeId);
@@ -197,6 +248,18 @@ export class RunRuntime {
 
   private onAction = (action: RunAction): void => {
     if (action === 'hold') {
+      if (this.blockingEncounter) {
+        const encounter = this.blockingEncounter;
+        this.resolvedEncounters.add(encounter.id);
+        this.passwordBlockers.resolve(encounter.id);
+        this.blockingEncounter = null;
+        this.held = false;
+        this.state = 'RESUME';
+        this.elements.holdButton.textContent = 'Hold';
+        this.updateHud();
+        return;
+      }
+
       this.held = !this.held;
       this.state = this.held ? 'HELD' : 'RESUME';
       this.elements.holdButton.textContent = this.held ? 'Resume' : 'Hold';
@@ -282,7 +345,9 @@ export class RunRuntime {
       const range = Math.max(0, encounterDistance - this.distance);
       this.elements.encounter.textContent = this.activeEncounter.label;
       this.elements.encounterMeta.textContent = this.activeEncounter.meta;
-      this.elements.range.textContent = range <= 0.5 ? 'PASSING' : `${Math.round(range)} m`;
+      this.elements.range.textContent = this.blockingEncounter
+        ? 'BLOCKED'
+        : range <= 0.5 ? 'PASSING' : `${Math.round(range)} m`;
     } else if (this.activeJunction) {
       const junctionDistance = this.activeJunction.at * this.currentRoute.length;
       this.elements.encounter.textContent = 'ROUTE FORK';
@@ -309,7 +374,7 @@ export class RunRuntime {
       `distance ${this.distance.toFixed(1)} / ${this.currentRoute.length.toFixed(1)}`,
       `state ${this.state}`,
       `fps ${this.fps}`,
-      '←/→ choose · Space hold · Esc pause',
+      '←/→ choose · Space resolve/hold · Esc pause',
     ].join('\n');
   }
 

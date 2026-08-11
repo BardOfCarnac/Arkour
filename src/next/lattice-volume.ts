@@ -1,5 +1,11 @@
 import * as THREE from 'three';
 import type { RunWorld, Vec3 } from '../run/types';
+import {
+  MACHINERY_FAMILY_COUNT,
+  addMachineryAssembly,
+  createMachineryMaterials,
+  type MachineryMaterials,
+} from './machinery-kit';
 
 const CELL_X = 18;
 const CELL_Z = CELL_X * Math.sqrt(3) / 2;
@@ -48,9 +54,6 @@ function routeSegments(world: RunWorld): Segment[] {
       if (segment.kind === 'line') {
         result.push({ a: vector(segment.from), b: vector(segment.to) });
       } else {
-        // The document compiler currently emits hard line segments. Keep curved
-        // routes safe too by reserving the two control legs until the global
-        // lattice gets a dedicated curve-distance helper.
         result.push({ a: vector(segment.from), b: vector(segment.control) });
         result.push({ a: vector(segment.control), b: vector(segment.to) });
       }
@@ -76,8 +79,6 @@ function distanceToRoutes(point: THREE.Vector3, segments: readonly Segment[]): n
 function encounterPoints(world: RunWorld): THREE.Vector3[] {
   const points: THREE.Vector3[] = [];
   for (const route of world.routes) {
-    // Compiler routes are hard line chains, so cumulative interpolation gives a
-    // stable absolute node reservation without importing runtime route classes.
     const legs = route.segments.map((segment) => {
       if (segment.kind === 'line') return { from: vector(segment.from), to: vector(segment.to) };
       return { from: vector(segment.from), to: vector(segment.to) };
@@ -130,20 +131,6 @@ function key(q: number, r: number, layer: number): string {
   return `${q}:${r}:${layer}`;
 }
 
-function createMaterials(): {
-  dark: THREE.MeshStandardMaterial;
-  edge: THREE.MeshStandardMaterial;
-  conductor: THREE.MeshStandardMaterial;
-  ceramic: THREE.MeshStandardMaterial;
-} {
-  return {
-    dark: new THREE.MeshStandardMaterial({ color: 0x0b1216, roughness: 0.74, metalness: 0.38 }),
-    edge: new THREE.MeshStandardMaterial({ color: 0x1e3037, roughness: 0.58, metalness: 0.5 }),
-    conductor: new THREE.MeshStandardMaterial({ color: 0x694a3b, roughness: 0.42, metalness: 0.76 }),
-    ceramic: new THREE.MeshStandardMaterial({ color: 0x5d686d, roughness: 0.84, metalness: 0.08 }),
-  };
-}
-
 function addBeam(
   group: THREE.Group,
   from: THREE.Vector3,
@@ -164,83 +151,51 @@ function addBeam(
 function addCellMachine(
   group: THREE.Group,
   cell: Cell,
-  materials: ReturnType<typeof createMaterials>,
+  materials: MachineryMaterials,
   seed: number,
 ): void {
   const h = hash(seed, cell.q, cell.r, cell.layer, 17);
-  const width = 5.5 + unit(hash(h, 1)) * 7.5;
-  const depth = 5.5 + unit(hash(h, 2)) * 7.5;
+  const width = 6.2 + unit(hash(h, 1)) * 6.1;
+  const depth = 6.2 + unit(hash(h, 2)) * 6.1;
   const local = new THREE.Group();
   local.position.copy(cell.position);
+  local.position.y += (unit(hash(h, 3)) - 0.5) * 2.4;
   local.rotation.y = cell.rotation;
+  local.name = `arkour-lattice-cell:${cell.q}:${cell.r}:${cell.layer}`;
 
-  if (cell.family === 0) {
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(width, cell.height, depth),
-      materials.dark,
-    );
-    body.position.y = (unit(hash(h, 3)) - 0.5) * 4;
-    local.add(body);
-
-    const cap = new THREE.Mesh(
-      new THREE.BoxGeometry(width * 1.35, 1.1, depth * 0.72),
-      materials.edge,
-    );
-    cap.position.y = body.position.y + cell.height * 0.34;
-    local.add(cap);
-  } else if (cell.family === 1) {
-    const shaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(width * 0.38, width * 0.46, cell.height, 8, 1, false),
-      materials.dark,
-    );
-    local.add(shaft);
-    for (const offset of [-0.28, 0, 0.28]) {
-      const fin = new THREE.Mesh(
-        new THREE.BoxGeometry(width * 1.5, 0.9, depth * 0.5),
-        materials.ceramic,
-      );
-      fin.position.y = offset * cell.height;
-      local.add(fin);
-    }
-  } else {
-    const core = new THREE.Mesh(
-      new THREE.BoxGeometry(width * 0.72, cell.height * 0.78, depth * 0.72),
-      materials.edge,
-    );
-    local.add(core);
-    const plateCount = 3 + (h % 3);
-    for (let index = 0; index < plateCount; index += 1) {
-      const plate = new THREE.Mesh(
-        new THREE.BoxGeometry(width * 1.55, 1.05, depth * 0.38),
-        index % 2 === 0 ? materials.dark : materials.conductor,
-      );
-      plate.position.y = (index - (plateCount - 1) / 2) * 3.1;
-      plate.position.x = ((index % 2) * 2 - 1) * width * 0.18;
-      local.add(plate);
-    }
-  }
+  addMachineryAssembly(
+    local,
+    {
+      family: cell.family,
+      width,
+      depth,
+      height: cell.height,
+      seed: h,
+    },
+    materials,
+  );
 
   group.add(local);
 }
 
 /**
  * Builds one global lattice volume shared by every branch. Occupancy is chosen
- * in absolute world space, not route-relative space. Routes and encounter zones
- * carve corridors out of the volume; neighbouring occupied cells are connected
- * into machinery so the result reads as one interlinked megastructure rather
- * than independent props hugging each rail.
+ * in absolute world space, not route-relative space. Routes, encounters and any
+ * accepted macrostructure claims carve volume before ordinary machinery cells
+ * are admitted.
  */
 export function addLatticeVolumeCity(
   scene: THREE.Scene,
   world: RunWorld,
-  options: { seed?: number; density?: number } = {},
+  options: { seed?: number; density?: number; claims?: readonly THREE.Box3[] } = {},
 ): THREE.Group {
   const seed = options.seed ?? 4712;
   const density = THREE.MathUtils.clamp(options.density ?? 0.34, 0.12, 0.6);
+  const claims = options.claims ?? [];
   const segments = routeSegments(world);
   const encounters = encounterPoints(world);
   const bounds = routeBounds(world);
-  const materials = createMaterials();
+  const materials = createMachineryMaterials();
   const group = new THREE.Group();
   group.name = 'arkour-global-lattice-volume';
 
@@ -259,12 +214,13 @@ export function addLatticeVolumeCity(
         if (!bounds.containsPoint(position)) continue;
         if (distanceToRoutes(position, segments) < ROUTE_CLEARANCE) continue;
         if (encounters.some((point) => point.distanceTo(position) < NODE_CLEARANCE)) continue;
+        if (claims.some((claim) => claim.containsPoint(position))) continue;
 
         const h = hash(seed, q, r, layer);
         if (unit(h) > density) continue;
-        const family = hash(h, 4) % 3;
+        const family = hash(h, 4) % MACHINERY_FAMILY_COUNT;
         const rotation = (hash(h, 5) % 3) * Math.PI / 3;
-        const height = 8 + unit(hash(h, 6)) * 22;
+        const height = 9 + unit(hash(h, 6)) * 20;
         const cell: Cell = { key: key(q, r, layer), q, r, layer, position, family, rotation, height };
         cells.set(cell.key, cell);
       }
@@ -290,8 +246,8 @@ export function addLatticeVolumeCity(
         group,
         cell.position,
         neighbor.position,
-        vertical ? materials.conductor : materials.edge,
-        vertical ? 0.55 : 0.7,
+        vertical ? materials.copper : materials.steel,
+        vertical ? 0.52 : 0.66,
       );
     }
   }

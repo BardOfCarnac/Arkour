@@ -5,9 +5,11 @@ import { addPasswordBlockers, type PasswordBlockers } from '../run/password-bloc
 import { createRouteFrame, sampleRouteFrameAtDistance } from '../run/route-frame';
 import type { RuntimeRoute } from '../run/route';
 import type { EncounterSpec, RunWorld } from '../run/types';
+import { addUndergroundDepthLighting } from './depth-lighting';
 import { HoldCircuitSystem, type HoldPose } from './hold-circuits';
 import { addSparseLatticeChassis } from './lattice-chassis';
 import { addLatticeVolumeCity } from './lattice-volume';
+import { addMacrostructureProxies } from './macrostructure-proxies';
 import { addLatticeNodeSeals, collectAttachmentTargets } from './node-seals';
 import { createNextPresentationKeepout } from './presentation-keepout';
 
@@ -56,12 +58,20 @@ export class LatticeFoundation {
     const interactions = generateNodeFormPlan(world);
     const spatialKeepout = keepout ?? createNextPresentationKeepout(world, routes);
 
-    const lattice = addLatticeVolumeCity(scene, world, { seed: 4712, density: 0.18 });
+    // Macroarchitecture gets first claim on safe world-space volume. The current
+    // shapes are deliberately crude proxies: their job is to prove ownership and
+    // scale before any of the experimental building vocabularies are promoted.
+    const macrostructures = addMacrostructureProxies(scene, world, spatialKeepout);
+    const lattice = addLatticeVolumeCity(scene, world, {
+      seed: 4712,
+      density: 0.18,
+      claims: macrostructures.claims,
+    });
     const chassis = addSparseLatticeChassis(scene, world, spatialKeepout);
 
     // Targets are cosmetic integration points only. The Password seal itself is
     // now guaranteed independently as a complete level boundary.
-    const attachmentTargets = collectAttachmentTargets(lattice, chassis);
+    const attachmentTargets = collectAttachmentTargets(macrostructures.group, lattice, chassis);
     const seals = addLatticeNodeSeals(
       scene,
       routes,
@@ -71,9 +81,11 @@ export class LatticeFoundation {
       spatialKeepout,
     );
 
+    addWireAccents(macrostructures.group);
     addWireAccents(lattice);
     addWireAccents(chassis);
     addWireAccents(seals);
+    addUndergroundDepthLighting(scene, routes, world);
 
     this.holds = new HoldCircuitSystem(scene, routes, world, interactions);
     this.blockers = addPasswordBlockers(scene, routes, world);
@@ -119,14 +131,20 @@ export class LatticeFoundation {
         .addScaledVector(this.holdFrame.up, 0.12);
     }
 
-    this.cameraPosition.copy(this.runnerPosition)
-      .addScaledVector(this.holdFrame.up, 1.25)
-      .addScaledVector(this.holdFrame.forward, -3.4);
-    camera.position.copy(this.cameraPosition);
-
     const encounterDistance = encounter.at * pose.route.length;
     sampleRouteFrameAtDistance(pose.route, encounterDistance, this.nodeFrame);
-    this.target.copy(this.nodeFrame.position).addScaledVector(this.nodeFrame.up, 0.3);
+
+    const shoulder = pose.offset.right >= 0 ? 2.7 : -2.7;
+    this.cameraPosition.copy(this.runnerPosition)
+      .addScaledVector(this.holdFrame.right, shoulder)
+      .addScaledVector(this.holdFrame.up, 1.65)
+      .addScaledVector(this.holdFrame.forward, -6.4);
+    camera.position.copy(this.cameraPosition);
+    camera.up.copy(this.nodeFrame.up);
+
+    this.target.copy(this.nodeFrame.position)
+      .addScaledVector(this.nodeFrame.up, 0.2)
+      .addScaledVector(this.nodeFrame.forward, 0.35);
     camera.lookAt(this.target);
     return true;
   }

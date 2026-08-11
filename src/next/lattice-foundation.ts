@@ -9,6 +9,7 @@ import { addUndergroundDepthLighting } from './depth-lighting';
 import { HoldCircuitSystem, type HoldPose } from './hold-circuits';
 import { addSparseLatticeChassis } from './lattice-chassis';
 import { addLatticeVolumeCity } from './lattice-volume';
+import { addMacrostructureProxies } from './macrostructure-proxies';
 import { addLatticeNodeSeals, collectAttachmentTargets } from './node-seals';
 import { createNextPresentationKeepout } from './presentation-keepout';
 
@@ -57,12 +58,20 @@ export class LatticeFoundation {
     const interactions = generateNodeFormPlan(world);
     const spatialKeepout = keepout ?? createNextPresentationKeepout(world, routes);
 
-    const lattice = addLatticeVolumeCity(scene, world, { seed: 4712, density: 0.18 });
+    // Macroarchitecture gets first claim on safe world-space volume. The current
+    // shapes are deliberately crude proxies: their job is to prove ownership and
+    // scale before any of the experimental building vocabularies are promoted.
+    const macrostructures = addMacrostructureProxies(scene, world, spatialKeepout);
+    const lattice = addLatticeVolumeCity(scene, world, {
+      seed: 4712,
+      density: 0.18,
+      claims: macrostructures.claims,
+    });
     const chassis = addSparseLatticeChassis(scene, world, spatialKeepout);
 
     // Targets are cosmetic integration points only. The Password seal itself is
     // now guaranteed independently as a complete level boundary.
-    const attachmentTargets = collectAttachmentTargets(lattice, chassis);
+    const attachmentTargets = collectAttachmentTargets(macrostructures.group, lattice, chassis);
     const seals = addLatticeNodeSeals(
       scene,
       routes,
@@ -72,6 +81,7 @@ export class LatticeFoundation {
       spatialKeepout,
     );
 
+    addWireAccents(macrostructures.group);
     addWireAccents(lattice);
     addWireAccents(chassis);
     addWireAccents(seals);

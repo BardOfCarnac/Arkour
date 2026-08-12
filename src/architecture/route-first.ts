@@ -1,11 +1,36 @@
+import type { EncounterSpec, RouteSpec, RunWorld, Vec3 } from '../run/types';
 import type { RouteAnchor, ScenePiece, ScenePlan } from '../run/scene-plan';
-import type { RouteSpec, RunWorld, Vec3 } from '../run/types';
 import type { ArchitectureOptions } from './generate';
 import { generateNodeComponents } from './node-components';
 
-const TARGET_SECTION_LENGTH = 6;
-const NODE_CAVITY_RADIUS = 17;
-const JUNCTION_CAVITY_RADIUS = 22;
+const TARGET_SECTION_LENGTH = 5;
+const JUNCTION_CAVITY_RADIUS = 24;
+
+interface CavityProfile {
+  opening: readonly [number, number];
+  member: number;
+  radius: number;
+}
+
+const TRANSIT_PROFILE: CavityProfile = {
+  opening: [16, 14],
+  member: 26,
+  radius: 0,
+};
+
+const JUNCTION_PROFILE: CavityProfile = {
+  opening: [68, 54],
+  member: 9,
+  radius: JUNCTION_CAVITY_RADIUS,
+};
+
+const ENCOUNTER_PROFILES: Record<EncounterSpec['type'], CavityProfile> = {
+  password: { opening: [42, 30], member: 16, radius: 15 },
+  file: { opening: [34, 48], member: 15, radius: 19 },
+  control: { opening: [52, 34], member: 13, radius: 17 },
+  ice: { opening: [58, 48], member: 11, radius: 21 },
+  demon: { opening: [48, 58], member: 12, radius: 22 },
+};
 
 function pointDistance(a: Vec3, b: Vec3): number {
   return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
@@ -31,35 +56,96 @@ function routeAnchor(routeId: string, at: number): RouteAnchor {
   };
 }
 
-type VolumeZone = 'transit' | 'node' | 'junction';
+function smoothstep(value: number): number {
+  const t = Math.max(0, Math.min(1, value));
+  return t * t * (3 - 2 * t);
+}
 
-function volumeZoneAt(
+function profileBlend(
+  base: CavityProfile,
+  target: CavityProfile,
+  influence: number,
+): CavityProfile {
+  const t = smoothstep(influence);
+  return {
+    opening: [
+      base.opening[0] + (target.opening[0] - base.opening[0]) * t,
+      base.opening[1] + (target.opening[1] - base.opening[1]) * t,
+    ],
+    member: base.member + (target.member - base.member) * t,
+    radius: target.radius,
+  };
+}
+
+function encounterProfileAt(
+  route: RouteSpec,
+  routeLength: number,
+  distance: number,
+): { profile: CavityProfile; influence: number } | null {
+  let nearest: { encounter: EncounterSpec; delta: number } | null = null;
+
+  for (const encounter of route.encounters ?? []) {
+    const delta = Math.abs(encounter.at * routeLength - distance);
+    if (!nearest || delta < nearest.delta) nearest = { encounter, delta };
+  }
+
+  if (!nearest) return null;
+  const profile = ENCOUNTER_PROFILES[nearest.encounter.type];
+  if (nearest.delta > profile.radius) return null;
+
+  return {
+    profile,
+    influence: 1 - nearest.delta / profile.radius,
+  };
+}
+
+function junctionInfluenceAt(
   world: RunWorld,
   route: RouteSpec,
   routeLength: number,
   distance: number,
-): VolumeZone {
-  const junctionDistances: number[] = [];
+): number {
+  let influence = 0;
 
   for (const junction of world.junctions) {
+    const candidates: number[] = [];
     if (junction.incomingRoute === route.id) {
-      junctionDistances.push(junction.at * routeLength);
+      candidates.push(junction.at * routeLength);
     }
     if (junction.exits.some((exit) => exit.routeId === route.id)) {
-      junctionDistances.push(0);
+      candidates.push(0);
+    }
+
+    for (const candidate of candidates) {
+      const delta = Math.abs(candidate - distance);
+      if (delta <= JUNCTION_CAVITY_RADIUS) {
+        influence = Math.max(influence, 1 - delta / JUNCTION_CAVITY_RADIUS);
+      }
     }
   }
 
-  if (junctionDistances.some((candidate) => Math.abs(candidate - distance) <= JUNCTION_CAVITY_RADIUS)) {
-    return 'junction';
+  return influence;
+}
+
+function volumeProfileAt(
+  world: RunWorld,
+  route: RouteSpec,
+  routeLength: number,
+  distance: number,
+): CavityProfile {
+  let profile = TRANSIT_PROFILE;
+
+  const encounter = encounterProfileAt(route, routeLength, distance);
+  if (encounter) {
+    profile = profileBlend(profile, encounter.profile, encounter.influence);
   }
 
-  const nodeDistances = (route.encounters ?? []).map((encounter) => encounter.at * routeLength);
-  if (nodeDistances.some((candidate) => Math.abs(candidate - distance) <= NODE_CAVITY_RADIUS)) {
-    return 'node';
+  const junctionInfluence = junctionInfluenceAt(world, route, routeLength, distance);
+  if (junctionInfluence > 0) {
+    profile = profileBlend(profile, JUNCTION_PROFILE, junctionInfluence);
   }
 
-  return 'transit';
+  return profile;
 }
 
 function addMilledRouteVolume(
@@ -70,27 +156,20 @@ function addMilledRouteVolume(
 ): void {
   const routeLength = estimateRouteLength(route);
   const targetLength = TARGET_SECTION_LENGTH / density;
-  const sectionCount = Math.max(3, Math.ceil(routeLength / targetLength));
+  const sectionCount = Math.max(4, Math.ceil(routeLength / targetLength));
   const sectionLength = routeLength / sectionCount;
 
   for (let index = 0; index < sectionCount; index += 1) {
     const at = (index + 0.5) / sectionCount;
     const distance = at * routeLength;
-    const zone = volumeZoneAt(world, route, routeLength, distance);
-
-    const opening: readonly [number, number] = zone === 'junction'
-      ? [60, 46]
-      : zone === 'node'
-        ? [48, 38]
-        : [18, 16];
-    const member = zone === 'junction' ? 10 : zone === 'node' ? 14 : 24;
+    const profile = volumeProfileAt(world, route, routeLength, distance);
 
     pieces.push({
       kind: 'aperture',
       anchor: routeAnchor(route.id, at),
-      opening,
-      member,
-      depth: sectionLength * 1.04,
+      opening: profile.opening,
+      member: profile.member,
+      depth: sectionLength * 1.08,
       material: 'dark',
     });
   }
@@ -99,11 +178,12 @@ function addMilledRouteVolume(
 /**
  * Route-first prototype using negative space instead of a surrounding city.
  *
- * Each real route is treated as a bore milled through one huge dark volume.
- * Dense, overlapping aperture sections read as continuous solid material while
- * leaving the traversal corridor empty. Around encounters and branch points the
- * bore widens into larger cavities, so node machinery remains the only authored
- * content in the space rather than sitting among unrelated filler buildings.
+ * Every valid route is a bore milled through one continuous dark mass. The bore
+ * remains deliberately tight in transit, then changes cross-section around the
+ * actual NET content: Password spaces spread horizontally, Files become taller
+ * slots, Controls widen into switch-like chambers, and ICE/Demon encounters open
+ * into the largest volumes. Junctions expand beyond all of them so the topology
+ * can be read from the shape of the void itself.
  *
  * The gameplay graph, node machinery, camera and traversal runtime are unchanged.
  */

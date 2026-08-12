@@ -190,7 +190,10 @@ export function addLatticeVolumeCity(
   options: { seed?: number; density?: number; claims?: readonly THREE.Box3[] } = {},
 ): THREE.Group {
   const seed = options.seed ?? 4712;
-  const density = THREE.MathUtils.clamp(options.density ?? 0.34, 0.12, 0.6);
+  // Metric-scale worlds can be much larger while keeping the same 18 m lattice
+  // cell and 6-29 m machinery vocabulary. Allow genuinely sparse occupancy
+  // instead of forcing the old small-world 12% minimum.
+  const density = THREE.MathUtils.clamp(options.density ?? 0.34, 0.001, 0.6);
   const claims = options.claims ?? [];
   const segments = routeSegments(world);
   const encounters = encounterPoints(world);

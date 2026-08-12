@@ -1,7 +1,6 @@
 import './styles.css';
 import { acceptanceArchitectureDocument } from '../architecture/document/acceptance';
 import { compileArchitectureDocument } from '../architecture/document/compile';
-import { attachLatticeFoundation } from './lattice-foundation';
 import { NextAcceptanceRuntime } from './runtime';
 import { attachRunnerEntity } from './runner';
 import { attachViewerMode } from './viewer';
@@ -17,7 +16,7 @@ app.innerHTML = `
     <div class="hud">
       <section class="panel title-panel">
         <strong>ARKOUR // RUN</strong>
-        <span>ArchitectureDocument → 60° routes → node forms → lattice volume → hold circuits</span>
+        <span>ArchitectureDocument → 60° routes → node forms → lattice volume → sparse chassis → hold circuits</span>
       </section>
 
       <section class="panel stage-panel">
@@ -63,7 +62,7 @@ app.innerHTML = `
         </div>
       </section>
 
-      <span class="corner-mark">RUN // LATTICE FOUNDATION</span>
+      <span class="corner-mark">RUN // NATIVE LATTICE FOUNDATION</span>
     </div>
   </main>
 `;
@@ -101,7 +100,6 @@ const runtime = new NextAcceptanceRuntime(world, acceptanceArchitectureDocument,
 });
 attachRunnerEntity(runtime);
 const viewer = attachViewerMode(runtime, get('viewport'), get('spectator-viewport'));
-attachLatticeFoundation(runtime, world);
 
 const syncViewButtons = (): void => {
   const spectator = viewer.mode === 'spectator';

@@ -1,22 +1,15 @@
 import * as THREE from 'three';
 import { generateNodeFormPlan } from '../architecture/node-forms';
-import { addPasswordBlockers } from '../run/password-blockers';
+import type { SpatialKeepout } from '../run/keepout';
+import { addPasswordBlockers, type PasswordBlockers } from '../run/password-blockers';
 import { createRouteFrame, sampleRouteFrameAtDistance } from '../run/route-frame';
 import type { RuntimeRoute } from '../run/route';
 import type { EncounterSpec, RunWorld } from '../run/types';
-import { HoldCircuitSystem } from './hold-circuits';
+import { HoldCircuitSystem, type HoldPose } from './hold-circuits';
+import { addSparseLatticeChassis } from './lattice-chassis';
 import { addLatticeVolumeCity } from './lattice-volume';
-import type { NextAcceptanceRuntime } from './runtime';
-
-interface RuntimeBridge {
-  scene: THREE.Scene;
-  camera: THREE.PerspectiveCamera;
-  renderer: THREE.WebGLRenderer;
-  routes: Map<string, RuntimeRoute>;
-  timeline: number;
-  pendingEncounter?: EncounterSpec;
-  timelineForRouteDistance(routeId: string, distance: number): number;
-}
+import { addLatticeNodeSeals, collectAttachmentTargets } from './node-seals';
+import { createNextPresentationKeepout } from './presentation-keepout';
 
 function addWireAccents(root: THREE.Object3D): void {
   const material = new THREE.LineBasicMaterial({
@@ -35,89 +28,100 @@ function addWireAccents(root: THREE.Object3D): void {
 }
 
 /**
- * Runtime reconciliation bridge for the new foundation. It adds the global
- * absolute lattice volume after the canonical runtime has constructed its node
- * scenery, renders physical hold circuits from the interaction contract, and
- * applies the same hold sample to both runner glyph and first-person camera.
+ * Native runtime owner for the new Arkour foundation. World-space providers use
+ * the same spatial admission authority as ordinary scenery; blocker attachments
+ * then grow into the actual lattice/chassis meshes that survived generation.
  */
-export function attachLatticeFoundation(runtime: NextAcceptanceRuntime, world: RunWorld): void {
-  const bridge = runtime as unknown as RuntimeBridge;
-  const interactions = generateNodeFormPlan(world);
-  const lattice = addLatticeVolumeCity(bridge.scene, world, { seed: 4712, density: 0.18 });
-  addWireAccents(lattice);
+export class LatticeFoundation {
+  private readonly holds: HoldCircuitSystem;
+  private readonly blockers: PasswordBlockers;
+  private readonly holdFrame = createRouteFrame();
+  private readonly nodeFrame = createRouteFrame();
+  private readonly runnerPosition = new THREE.Vector3();
+  private readonly cameraPosition = new THREE.Vector3();
+  private readonly target = new THREE.Vector3();
 
-  const holds = new HoldCircuitSystem(bridge.scene, bridge.routes, world, interactions);
-  const blockers = addPasswordBlockers(bridge.scene, bridge.routes, world);
-  const originalRender = bridge.renderer.render.bind(bridge.renderer);
-  const holdFrame = createRouteFrame();
-  const nodeFrame = createRouteFrame();
-  const target = new THREE.Vector3();
-  const runnerPosition = new THREE.Vector3();
-  const cameraPosition = new THREE.Vector3();
+  constructor(
+    scene: THREE.Scene,
+    routes: Map<string, RuntimeRoute>,
+    world: RunWorld,
+    keepout?: SpatialKeepout,
+  ) {
+    const interactions = generateNodeFormPlan(world);
+    const spatialKeepout = keepout ?? createNextPresentationKeepout(world, routes);
 
-  bridge.renderer.render = ((scene: THREE.Scene, camera: THREE.Camera): void => {
-    const encounter = bridge.pendingEncounter;
-    if (encounter && camera instanceof THREE.PerspectiveCamera) {
-      const pose = holds.sample(encounter.id, performance.now() / 1000);
-      if (pose) {
-        bridge.timeline = bridge.timelineForRouteDistance(pose.route.id, pose.distance);
+    const lattice = addLatticeVolumeCity(scene, world, { seed: 4712, density: 0.18 });
+    const chassis = addSparseLatticeChassis(scene, world, spatialKeepout);
 
-        sampleRouteFrameAtDistance(pose.route, pose.distance, holdFrame);
-        runnerPosition.copy(holdFrame.position)
-          .addScaledVector(holdFrame.right, pose.offset.right)
-          .addScaledVector(holdFrame.up, pose.offset.up)
-          .addScaledVector(holdFrame.forward, pose.offset.forward);
+    // Attachment targets are sampled before decorative wire accents are added,
+    // so the solver binds nodes to real machinery rather than to edge lines.
+    const attachmentTargets = collectAttachmentTargets(lattice, chassis);
+    const seals = addLatticeNodeSeals(
+      scene,
+      routes,
+      world,
+      interactions,
+      attachmentTargets,
+      spatialKeepout,
+    );
 
-        cameraPosition.copy(runnerPosition)
-          .addScaledVector(holdFrame.up, 1.25)
-          .addScaledVector(holdFrame.forward, -3.4);
-        camera.position.copy(cameraPosition);
+    addWireAccents(lattice);
+    addWireAccents(chassis);
+    addWireAccents(seals);
 
-        const encounterDistance = encounter.at * pose.route.length;
-        sampleRouteFrameAtDistance(pose.route, encounterDistance, nodeFrame);
-        target.copy(nodeFrame.position).addScaledVector(nodeFrame.up, 0.3);
-        camera.lookAt(target);
-      }
+    this.holds = new HoldCircuitSystem(scene, routes, world, interactions);
+    this.blockers = addPasswordBlockers(scene, routes, world);
+  }
+
+  update(dt: number): void {
+    this.blockers.update(dt);
+  }
+
+  anchorDistance(encounterId: string): number | undefined {
+    return this.holds.anchorDistance(encounterId);
+  }
+
+  sampleHold(encounterId: string, nowSeconds: number): HoldPose | undefined {
+    return this.holds.sample(encounterId, nowSeconds);
+  }
+
+  resolveEncounter(encounterId: string): void {
+    this.blockers.resolve(encounterId);
+  }
+
+  reset(): void {
+    this.blockers.resetAll();
+  }
+
+  applyHoldPresentation(
+    camera: THREE.PerspectiveCamera,
+    runner: THREE.Object3D | undefined,
+    encounter: EncounterSpec,
+    nowSeconds: number,
+  ): boolean {
+    const pose = this.sampleHold(encounter.id, nowSeconds);
+    if (!pose) return false;
+
+    sampleRouteFrameAtDistance(pose.route, pose.distance, this.holdFrame);
+    this.runnerPosition.copy(this.holdFrame.position)
+      .addScaledVector(this.holdFrame.right, pose.offset.right)
+      .addScaledVector(this.holdFrame.up, pose.offset.up)
+      .addScaledVector(this.holdFrame.forward, pose.offset.forward);
+
+    if (runner) {
+      runner.position.copy(this.runnerPosition)
+        .addScaledVector(this.holdFrame.up, 0.12);
     }
-    originalRender(scene, camera);
-  }) as THREE.WebGLRenderer['render'];
 
-  let previousEncounterId: string | undefined;
-  let previousTimeline = bridge.timeline;
-  let previousNow = performance.now();
+    this.cameraPosition.copy(this.runnerPosition)
+      .addScaledVector(this.holdFrame.up, 1.25)
+      .addScaledVector(this.holdFrame.forward, -3.4);
+    camera.position.copy(this.cameraPosition);
 
-  // RunnerEntity updates earlier in the animation frame. Applying the sampled
-  // offset afterwards means the glyph follows the physical circuit without
-  // duplicating its pose/animation logic. This loop also owns Password gate
-  // state so leaving a hold opens the blocker and Reset closes every gate again.
-  const updateRunner = (now: number): void => {
-    const dt = Math.min(0.05, Math.max(0, (now - previousNow) / 1000));
-    previousNow = now;
-    blockers.update(dt);
-
-    const encounter = bridge.pendingEncounter;
-    if (!encounter && previousEncounterId) {
-      blockers.resolve(previousEncounterId);
-      previousEncounterId = undefined;
-    } else if (encounter) {
-      previousEncounterId = encounter.id;
-    }
-
-    if (bridge.timeline < 0.02 && previousTimeline > 0.08) blockers.resetAll();
-    previousTimeline = bridge.timeline;
-
-    const runner = bridge.scene.getObjectByName('arkour-runner');
-    if (encounter && runner) {
-      const pose = holds.sample(encounter.id, now / 1000);
-      if (pose) {
-        sampleRouteFrameAtDistance(pose.route, pose.distance, holdFrame);
-        runner.position.copy(holdFrame.position)
-          .addScaledVector(holdFrame.right, pose.offset.right)
-          .addScaledVector(holdFrame.up, pose.offset.up + 0.12)
-          .addScaledVector(holdFrame.forward, pose.offset.forward);
-      }
-    }
-    requestAnimationFrame(updateRunner);
-  };
-  requestAnimationFrame(updateRunner);
+    const encounterDistance = encounter.at * pose.route.length;
+    sampleRouteFrameAtDistance(pose.route, encounterDistance, this.nodeFrame);
+    this.target.copy(this.nodeFrame.position).addScaledVector(this.nodeFrame.up, 0.3);
+    camera.lookAt(this.target);
+    return true;
+  }
 }

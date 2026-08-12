@@ -1,8 +1,11 @@
 import * as THREE from 'three';
+import { generateNodeFormPlan } from '../architecture/node-forms';
 import { RUN_CAMERA_PROFILE } from '../run/camera-profile';
+import { sampleHoldingRoute } from '../run/holding-routes';
 import { createSpatialKeepout, type PresentationKeepoutPath, type SpatialKeepout } from '../run/keepout';
 import { createRouteFrame, sampleRouteFrameAtDistance } from '../run/route-frame';
 import type { RuntimeRoute } from '../run/route';
+import type { EncounterInteractionPlan } from '../run/scene-plan';
 import type { RunWorld } from '../run/types';
 
 interface TourLeg {
@@ -76,12 +79,7 @@ function nearestEncounterDistance(route: RuntimeRoute, distance: number): number
   return nearest;
 }
 
-/**
- * Samples the same authored camera grammar used by /next/: a smooth arc around
- * the hard route which contracts back toward centre on encounter approach.
- * Every terminal branch is sampled, not only the default path, so a later route
- * choice cannot lead the camera into scenery that was admitted for another path.
- */
+/** Samples the same authored smooth camera grammar used by /next/. */
 function samplePresentationPath(legs: TourLeg[]): PresentationKeepoutPath {
   const totalLength = legs.reduce((sum, leg) => sum + leg.route.length, 0);
   const count = Math.max(48, Math.ceil(totalLength / 3));
@@ -119,9 +117,63 @@ function samplePresentationPath(legs: TourLeg[]): PresentationKeepoutPath {
   return {
     camera,
     look,
-    // Includes the small deterministic encounter-hold drift used by /next/.
     clearance: RUN_CAMERA_PROFILE.sceneryClearance + 0.45,
   };
+}
+
+function holdAnchorDistance(
+  route: RuntimeRoute,
+  encounterAt: number,
+  interaction: EncounterInteractionPlan,
+): number {
+  const encounterDistance = encounterAt * route.length;
+  return Math.max(
+    0,
+    encounterDistance - (interaction.blocker ? interaction.stopClearance ?? 7 : 2.2),
+  );
+}
+
+/**
+ * Holding circuits are real traversal reservations too. They are supplied as
+ * keep-out paths so a chassis brace can never be admitted merely because it is
+ * clear of the main rail while cutting through an orbit/perch/dart circuit.
+ */
+function sampleHoldKeepoutPaths(
+  world: RunWorld,
+  routes: Map<string, RuntimeRoute>,
+): PresentationKeepoutPath[] {
+  const interactions = generateNodeFormPlan(world);
+  const paths: PresentationKeepoutPath[] = [];
+  const frame = createRouteFrame();
+
+  for (const routeSpec of world.routes) {
+    const route = routes.get(routeSpec.id);
+    if (!route) continue;
+
+    for (const encounter of routeSpec.encounters ?? []) {
+      const interaction = interactions[encounter.id];
+      if (!interaction?.holdRoute) continue;
+
+      const distance = holdAnchorDistance(route, encounter.at, interaction);
+      const points: THREE.Vector3[] = [];
+      const samples = 56;
+      for (let index = 0; index <= samples; index += 1) {
+        const progress = index / samples;
+        const elapsed = progress / Math.max(0.001, interaction.holdRoute.speed);
+        const offset = sampleHoldingRoute(interaction.holdRoute, elapsed);
+        sampleRouteFrameAtDistance(route, distance, frame);
+        points.push(
+          frame.position.clone()
+            .addScaledVector(frame.right, offset.right)
+            .addScaledVector(frame.up, offset.up)
+            .addScaledVector(frame.forward, offset.forward),
+        );
+      }
+      paths.push({ camera: points, clearance: 2.1 });
+    }
+  }
+
+  return paths;
 }
 
 export function createNextPresentationKeepout(
@@ -130,5 +182,6 @@ export function createNextPresentationKeepout(
 ): SpatialKeepout {
   const chains = enumerateRouteChains(world, routes, world.startRoute);
   const paths = chains.map((chain) => samplePresentationPath(legsFor(chain)));
+  paths.push(...sampleHoldKeepoutPaths(world, routes));
   return createSpatialKeepout(routes, paths);
 }

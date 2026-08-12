@@ -5,6 +5,7 @@ import { createRouteFrame, sampleRouteFrameAtDistance } from '../run/route-frame
 import { RuntimeRoute } from '../run/route';
 import { addScenePlan } from '../run/scenery';
 import type { EncounterSpec, JunctionSpec, RunWorld, Vec3 } from '../run/types';
+import { LatticeFoundation } from './lattice-foundation';
 import { createNextPresentationKeepout } from './presentation-keepout';
 
 interface AcceptanceElements {
@@ -183,21 +184,11 @@ function addRouteRails(scene: THREE.Scene, routes: Map<string, RuntimeRoute>): v
 
     route.spec.segments.forEach((segment, index) => {
       if (segment.kind === 'line') {
-        addStraightRail(
-          scene,
-          vector(segment.from),
-          vector(segment.to),
-          material,
-          `next-route:${route.id}:${index}`,
-        );
+        addStraightRail(scene, vector(segment.from), vector(segment.to), material, `next-route:${route.id}:${index}`);
         return;
       }
 
-      const curve = new THREE.QuadraticBezierCurve3(
-        vector(segment.from),
-        vector(segment.control),
-        vector(segment.to),
-      );
+      const curve = new THREE.QuadraticBezierCurve3(vector(segment.from), vector(segment.control), vector(segment.to));
       const geometry = new THREE.TubeGeometry(curve, 32, 0.2, 7, false);
       const rail = new THREE.Mesh(geometry, material);
       rail.name = `next-route:${route.id}:${index}`;
@@ -257,11 +248,6 @@ function nearestEncounterDistance(route: RuntimeRoute, distance: number): number
   return nearest;
 }
 
-/**
- * The rail stays hard and angular. The camera is a separate deterministic
- * spline which arcs around that rail but always returns to the known-safe
- * approach line at major components.
- */
 function buildArcCameraTour(legs: TourLeg[]): ArcCameraTour {
   const totalLength = legs.reduce((sum, leg) => sum + leg.route.length, 0);
   const count = Math.max(36, Math.ceil(totalLength / 7));
@@ -276,11 +262,7 @@ function buildArcCameraTour(legs: TourLeg[]): ArcCameraTour {
     sampleRouteFrameAtDistance(sample.route, sample.distance, frame);
 
     const nearest = nearestEncounterDistance(sample.route, sample.distance);
-    const betweenNodes = THREE.MathUtils.smoothstep(
-      THREE.MathUtils.clamp(nearest / 20, 0, 1),
-      0,
-      1,
-    );
+    const betweenNodes = THREE.MathUtils.smoothstep(THREE.MathUtils.clamp(nearest / 20, 0, 1), 0, 1);
     const wing = Math.sin(sample.globalDistance / 25) * (0.55 + betweenNodes * 1.55);
     const lift = 0.65 + betweenNodes * 0.55;
 
@@ -317,7 +299,7 @@ function stageFor(
   if (pendingEncounter) {
     return {
       title: pendingEncounter.label.toUpperCase(),
-      detail: `${pendingEncounter.meta || pendingEncounter.type.toUpperCase()} // HOLD FOR RESOLUTION`,
+      detail: `${pendingEncounter.meta || pendingEncounter.type.toUpperCase()} // HOLD CIRCUIT`,
     };
   }
   if (pendingJunction) {
@@ -328,7 +310,7 @@ function stageFor(
   }
   if (timeline < 0.16) return { title: 'SURFACE APPROACH', detail: 'CAMERAS, MAIN // SCHEMATIC GRAPH MIRROR' };
   if (timeline < SURFACE_END) return { title: 'JACK-IN DESCENT', detail: 'HARD ROUTE // CURVED CAMERA APPROACH' };
-  if (!sample) return { title: 'DESCENT', detail: 'ROUTE-FIRST CITY' };
+  if (!sample) return { title: 'DESCENT', detail: 'LATTICE VOLUME' };
 
   const encounter = nextEncounter(sample.route, sample.distance);
   if (encounter) {
@@ -347,6 +329,7 @@ export class NextAcceptanceRuntime {
   private readonly clock = new THREE.Clock();
   private readonly selectedExits = new Map<string, string>();
   private readonly clearedEncounters = new Set<string>();
+  private readonly foundation: LatticeFoundation;
   private tour: TourLeg[] = [];
   private undergroundCamera!: THREE.CatmullRomCurve3;
   private undergroundLook!: THREE.CatmullRomCurve3;
@@ -397,6 +380,8 @@ export class NextAcceptanceRuntime {
     addSurface(this.scene);
     addSurfaceMirror(this.scene, document);
 
+    this.foundation = new LatticeFoundation(this.scene, this.routes, world);
+
     const glow = new THREE.PointLight(0xff4054, 4.4, 40, 1.8);
     glow.position.set(0, SURFACE_Y + 1.5, 0);
     this.scene.add(glow);
@@ -433,6 +418,8 @@ export class NextAcceptanceRuntime {
   private tick = (): void => {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.elapsed += dt;
+    this.foundation.update(dt);
+
     if (this.playing) {
       this.timeline = Math.min(1, this.timeline + dt / AUTO_DURATION);
       if (this.timeline >= 1) {
@@ -472,9 +459,11 @@ export class NextAcceptanceRuntime {
     if (!encounter) return false;
 
     const encounterDistance = encounter.at * sample.route.length;
-    const stopOffset = Math.min(1.4, Math.max(0.7, encounter.engageDistance * 0.18));
-    const stopDistance = Math.max(0, encounterDistance - stopOffset);
-    this.timeline = this.timelineForRouteDistance(sample.route.id, stopDistance);
+    const fallbackOffset = Math.min(1.4, Math.max(0.7, encounter.engageDistance * 0.18));
+    const holdDistance = this.foundation.anchorDistance(encounter.id)
+      ?? Math.max(0, encounterDistance - fallbackOffset);
+
+    this.timeline = this.timelineForRouteDistance(sample.route.id, holdDistance);
     this.playing = false;
     this.pendingEncounter = encounter;
     this.elements.playButton.textContent = 'Resolve node';
@@ -501,8 +490,10 @@ export class NextAcceptanceRuntime {
   }
 
   private continueEncounter = (): void => {
-    if (!this.pendingEncounter) return;
-    this.clearedEncounters.add(this.pendingEncounter.id);
+    const encounter = this.pendingEncounter;
+    if (!encounter) return;
+    this.clearedEncounters.add(encounter.id);
+    this.foundation.resolveEncounter(encounter.id);
     this.pendingEncounter = undefined;
     this.hideEncounterGate();
     this.playing = true;
@@ -595,20 +586,17 @@ export class NextAcceptanceRuntime {
     const u = THREE.MathUtils.clamp((this.timeline - SURFACE_END) / (1 - SURFACE_END), 0, 1);
     this.undergroundCamera.getPointAt(u, this.camera.position);
     const target = this.undergroundLook.getPointAt(Math.min(1, u + 0.018));
+    this.camera.lookAt(target);
 
     if (this.pendingEncounter) {
-      const forward = target.clone().sub(this.camera.position).normalize();
-      const referenceUp = Math.abs(forward.y) > 0.94
-        ? new THREE.Vector3(0, 0, 1)
-        : new THREE.Vector3(0, 1, 0);
-      const right = new THREE.Vector3().crossVectors(referenceUp, forward).normalize();
-      const up = new THREE.Vector3().crossVectors(forward, right).normalize();
-      this.camera.position
-        .addScaledVector(right, Math.sin(this.elapsed * 0.8) * 0.34)
-        .addScaledVector(up, Math.cos(this.elapsed * 0.55) * 0.12);
+      const runner = this.scene.getObjectByName('arkour-runner');
+      this.foundation.applyHoldPresentation(
+        this.camera,
+        runner,
+        this.pendingEncounter,
+        performance.now() / 1000,
+      );
     }
-
-    this.camera.lookAt(target);
   }
 
   private updateHud(sample: TourSample | null): void {
@@ -636,6 +624,7 @@ export class NextAcceptanceRuntime {
     this.clearedEncounters.clear();
     this.pendingEncounter = undefined;
     this.pendingJunction = undefined;
+    this.foundation.reset();
     this.hideEncounterGate();
     this.hideRouteChoice();
     this.rebuildTour();

@@ -67,9 +67,10 @@ export class LatticeFoundation {
       seed: 4712,
       // At 350 m per NET floor the absolute lattice volume is roughly two orders
       // of magnitude larger than the old 36 m test world. Keep the 18 m cell size
-      // and machinery dimensions physical, but sample occupancy much more sparsely
-      // so mobile cost does not grow with the new kilometre-scale bounds.
+      // and machinery dimensions physical, but only sample a sparse subset of
+      // absolute lattice coordinates so mobile startup remains bounded.
       density: AVATAR_SCALE.latticeDensity,
+      sampleStride: AVATAR_SCALE.latticeSampleStride,
       claims: macrostructures.claims,
     });
     const chassis = addSparseLatticeChassis(scene, world, spatialKeepout);

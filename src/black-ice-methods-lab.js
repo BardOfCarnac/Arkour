@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { loadGzipBase64Parts } from './black-ice-gzip-loader.js';
 
 const canvas=document.querySelector('#view');
 const stage=document.querySelector('#stage');
@@ -294,18 +295,10 @@ stage.addEventListener('pointerup',endPointer);stage.addEventListener('pointerca
 stage.addEventListener('wheel',e=>{e.preventDefault();state.zoom=THREE.MathUtils.clamp(state.zoom*Math.exp(-e.deltaY*.001),.55,2.2);document.querySelector('#zoom').value=String(state.zoom);document.querySelector('#zoom-out').textContent=state.zoom.toFixed(2);updateCamera();},{passive:false});
 
 const loader=new GLTFLoader();
-const PANTHER_PARTS=16;
+const PANTHER_GZIP_PARTS=4;
 async function loadPantherBuffer(){
-  const urls=Array.from({length:PANTHER_PARTS},(_,i)=>`../assets/black-ice/panther.b64.${String(i).padStart(2,'0')}`);
-  const chunks=await Promise.all(urls.map(async url=>{
-    const response=await fetch(url);
-    if(!response.ok)throw new Error(`Panther asset part failed: ${response.status} ${url}`);
-    return (await response.text()).trim();
-  }));
-  const binary=atob(chunks.join(''));
-  const bytes=new Uint8Array(binary.length);
-  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-  return bytes.buffer;
+  const urls=Array.from({length:PANTHER_GZIP_PARTS},(_,i)=>`../assets/black-ice/panther-mask.gz.b64.${String(i).padStart(2,'0')}`);
+  return loadGzipBase64Parts(urls);
 }
 function acceptPanther(gltf){
   model=gltf.scene;normaliseModel(model);prepareMaterials(model);sourceScene.add(model);

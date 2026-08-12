@@ -22,7 +22,8 @@ export const AVATAR_SCALE = {
   runnerScaleFactor: 0.6933790332255467,
   cameraFarMetres: 6000,
   undergroundFogDensity: 0.00135,
-  latticeDensity: 0.004,
+  latticeDensity: 0.12,
+  latticeSampleStride: 3,
 } as const;
 
 function scalePoint([x, y, z]: Vec3): Vec3 {

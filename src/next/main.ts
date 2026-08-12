@@ -1,6 +1,11 @@
 import './styles.css';
 import { acceptanceArchitectureDocument } from '../architecture/document/acceptance';
 import { compileArchitectureDocument } from '../architecture/document/compile';
+import {
+  applyAvatarRelativePresentation,
+  applyAvatarRelativeWorldScale,
+  scaleRunnerToReferenceHeight,
+} from './avatar-scale';
 import { NextAcceptanceRuntime } from './runtime';
 import { attachRunnerEntity } from './runner';
 import { attachViewerMode } from './viewer';
@@ -15,20 +20,20 @@ app.innerHTML = `
 
     <div class="hud">
       <section class="panel title-panel">
-        <strong>ARKOUR // RUN</strong>
-        <span>ArchitectureDocument → 60° routes → node forms → lattice volume → sparse chassis → hold circuits</span>
+        <strong>ARKOUR // SCALE TEST</strong>
+        <span>1 UNIT = 1 M // RUNNER = 1.83 M // NOMINAL FLOOR DROP = 350 M</span>
       </section>
 
       <section class="panel stage-panel">
-        <span class="eyebrow">LATTICE-VOLUME RUN</span>
+        <span class="eyebrow">AVATAR-RELATIVE RUN</span>
         <strong id="stage">SURFACE APPROACH</strong>
         <small id="detail">EDITOR GRAPH MIRROR // ACCESS POINT AHEAD</small>
         <div class="progress"><i id="progress"></i></div>
       </section>
 
       <section class="panel note-panel">
-        <b>Runner and viewer cameras are separate.</b><br />
-        V toggles the external spectator view without changing traversal state.
+        <b>Default centre descent ≈ 2.1 km.</b><br />
+        Local machinery remains metre-scale; distance between NET floors now carries the scale.
       </section>
 
       <section id="encounter-gate" class="encounter-gate panel" aria-live="polite" hidden>
@@ -62,7 +67,7 @@ app.innerHTML = `
         </div>
       </section>
 
-      <span class="corner-mark">RUN // NATIVE LATTICE FOUNDATION</span>
+      <span class="corner-mark">RUN // 1 M WORLD UNITS</span>
     </div>
   </main>
 `;
@@ -81,7 +86,9 @@ const mobileScrub = get<HTMLInputElement>('mobile-scrub');
 const viewButton = get<HTMLButtonElement>('view-mode');
 const mobileViewButton = get<HTMLButtonElement>('mobile-view-mode');
 
-const world = compileArchitectureDocument(acceptanceArchitectureDocument);
+const world = applyAvatarRelativeWorldScale(
+  compileArchitectureDocument(acceptanceArchitectureDocument),
+);
 const runtime = new NextAcceptanceRuntime(world, acceptanceArchitectureDocument, {
   canvasHost: get('viewport'),
   stage: get('stage'),
@@ -98,7 +105,9 @@ const runtime = new NextAcceptanceRuntime(world, acceptanceArchitectureDocument,
   routeChoiceTitle: get('route-choice-title'),
   routeChoiceButtons: get('route-choice-buttons'),
 });
+applyAvatarRelativePresentation(runtime);
 attachRunnerEntity(runtime);
+scaleRunnerToReferenceHeight(runtime);
 const viewer = attachViewerMode(runtime, get('viewport'), get('spectator-viewport'));
 
 const syncViewButtons = (): void => {

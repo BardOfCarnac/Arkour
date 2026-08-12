@@ -187,11 +187,17 @@ function addCellMachine(
 export function addLatticeVolumeCity(
   scene: THREE.Scene,
   world: RunWorld,
-  options: { seed?: number; density?: number; claims?: readonly THREE.Box3[] } = {},
+  options: {
+    seed?: number;
+    density?: number;
+    claims?: readonly THREE.Box3[];
+    sampleStride?: number;
+  } = {},
 ): THREE.Group {
   const seed = options.seed ?? 4712;
-  const density = THREE.MathUtils.clamp(options.density ?? 0.34, 0.12, 0.6);
+  const density = THREE.MathUtils.clamp(options.density ?? 0.34, 0.001, 0.6);
   const claims = options.claims ?? [];
+  const sampleStride = Math.max(1, Math.floor(options.sampleStride ?? 1));
   const segments = routeSegments(world);
   const encounters = encounterPoints(world);
   const bounds = routeBounds(world);
@@ -205,11 +211,11 @@ export function addLatticeVolumeCity(
   const rMax = Math.ceil(bounds.max.z / CELL_Z) + 1;
   const cells = new Map<string, Cell>();
 
-  for (let layer = minLayer; layer <= maxLayer; layer += 1) {
-    for (let r = rMin; r <= rMax; r += 1) {
+  for (let layer = minLayer; layer <= maxLayer; layer += sampleStride) {
+    for (let r = rMin; r <= rMax; r += sampleStride) {
       const qMin = Math.floor(bounds.min.x / CELL_X - r * 0.5) - 1;
       const qMax = Math.ceil(bounds.max.x / CELL_X - r * 0.5) + 1;
-      for (let q = qMin; q <= qMax; q += 1) {
+      for (let q = qMin; q <= qMax; q += sampleStride) {
         const position = latticePosition(q, r, layer);
         if (!bounds.containsPoint(position)) continue;
         if (distanceToRoutes(position, segments) < ROUTE_CLEARANCE) continue;
@@ -230,10 +236,10 @@ export function addLatticeVolumeCity(
   for (const cell of cells.values()) addCellMachine(group, cell, materials, seed);
 
   const neighbors = [
-    [1, 0, 0],
-    [0, 1, 0],
-    [-1, 1, 0],
-    [0, 0, 1],
+    [sampleStride, 0, 0],
+    [0, sampleStride, 0],
+    [-sampleStride, sampleStride, 0],
+    [0, 0, sampleStride],
   ] as const;
   for (const cell of cells.values()) {
     for (const [dq, dr, dl] of neighbors) {

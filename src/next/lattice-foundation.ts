@@ -5,6 +5,7 @@ import { addPasswordBlockers, type PasswordBlockers } from '../run/password-bloc
 import { createRouteFrame, sampleRouteFrameAtDistance } from '../run/route-frame';
 import type { RuntimeRoute } from '../run/route';
 import type { EncounterSpec, RunWorld } from '../run/types';
+import { AVATAR_SCALE } from './avatar-scale';
 import { addUndergroundDepthLighting } from './depth-lighting';
 import { HoldCircuitSystem, type HoldPose } from './hold-circuits';
 import { addSparseLatticeChassis } from './lattice-chassis';
@@ -64,7 +65,12 @@ export class LatticeFoundation {
     const macrostructures = addMacrostructureProxies(scene, world, spatialKeepout);
     const lattice = addLatticeVolumeCity(scene, world, {
       seed: 4712,
-      density: 0.18,
+      // At 350 m per NET floor the absolute lattice volume is roughly two orders
+      // of magnitude larger than the old 36 m test world. Keep the 18 m cell size
+      // and machinery dimensions physical, but only sample a sparse subset of
+      // absolute lattice coordinates so mobile startup remains bounded.
+      density: AVATAR_SCALE.latticeDensity,
+      sampleStride: AVATAR_SCALE.latticeSampleStride,
       claims: macrostructures.claims,
     });
     const chassis = addSparseLatticeChassis(scene, world, spatialKeepout);

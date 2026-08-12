@@ -6,7 +6,7 @@ export default defineConfig({
   base: './',
   build: {
     rollupOptions: {
-      input: ['index.html', 'next/index.html', 'legacy/index.html'],
+      input: ['index.html', 'next/index.html', 'legacy/index.html', 'black-ice-methods-lab/index.html'],
     },
   },
 });

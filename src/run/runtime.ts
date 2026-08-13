@@ -2,12 +2,14 @@ import * as THREE from 'three';
 import { collectCameraObstacles } from './camera-obstacles';
 import { CameraRig } from './camera-rig';
 import { RunInput, type RunAction } from './input';
+import { ParticleLightField } from './particle-light';
+import { RunParticles } from './particles';
 import { RuntimeRoute } from './route';
 import { addScenePlan } from './scenery';
 import type { ScenePlan } from './scene-plan';
 import { SceneTheme, type ThemeSettings } from './theme';
 import type { EncounterSpec, JunctionSpec, RunState, RunWorld } from './types';
-import { addParticles, addRouteGeometry } from './world';
+import { addRouteGeometry } from './world';
 
 interface RuntimeElements {
   canvasHost: HTMLElement;
@@ -30,8 +32,11 @@ export class RunRuntime {
   private readonly routeMeshes: Map<string, THREE.Mesh>;
   private readonly cameraRig: CameraRig;
   private readonly theme: SceneTheme;
+  private readonly lightField: ParticleLightField;
+  private readonly particles: RunParticles;
   private readonly input = new RunInput();
   private readonly clock = new THREE.Clock();
+  private readonly runnerPosition = new THREE.Vector3();
 
   private currentRoute: RuntimeRoute;
   private distance = 0;
@@ -74,7 +79,8 @@ export class RunRuntime {
     this.cameraRig = new CameraRig(collectCameraObstacles(this.scene));
     this.theme = new SceneTheme(this.scene, start);
     this.theme.attach();
-    addParticles(this.scene);
+    this.lightField = new ParticleLightField(this.scene, start);
+    this.particles = new RunParticles(this.scene, this.lightField);
     this.routeMeshes = addRouteGeometry(this.scene, this.routes);
     this.highlightRoute(this.currentRoute.id);
 
@@ -91,19 +97,26 @@ export class RunRuntime {
 
   setTheme(settings: Partial<ThemeSettings>): void {
     this.theme.setSettings(settings);
+    this.lightField.setSettings(settings);
   }
 
-  loadThemeImage(file: File): Promise<void> {
-    return this.theme.loadImage(file);
+  async loadThemeImage(file: File): Promise<void> {
+    await Promise.all([
+      this.theme.loadImage(file),
+      this.lightField.loadImage(file),
+    ]);
   }
 
   resetTheme(): void {
     this.theme.resetField();
+    this.lightField.resetField();
   }
 
   destroy(): void {
     this.renderer.setAnimationLoop(null);
     this.input.destroy();
+    this.particles.destroy();
+    this.lightField.destroy();
     this.theme.destroy();
     window.removeEventListener('resize', this.resize);
     this.renderer.dispose();
@@ -113,7 +126,11 @@ export class RunRuntime {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.elapsed += dt;
 
-    if (!this.paused) this.update(dt);
+    if (!this.paused) {
+      this.update(dt);
+      this.currentRoute.pointAtDistance(this.distance, this.runnerPosition);
+      this.particles.update(dt, this.runnerPosition);
+    }
 
     this.cameraRig.update(this.camera, this.currentRoute, this.distance, dt, this.held, this.elapsed);
     this.updateBranchButtons();

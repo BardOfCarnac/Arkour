@@ -239,7 +239,11 @@ export class SceneTheme {
       const oxblood = new THREE.Color(0x1d0709);
       const fallback = darkTeal.lerp(oxblood, noise2(px * scale * 0.72 + 4, py * scale * 0.72 + 4));
       const mask = (1 - smoothstep((luminance - 0.025) / 0.175)) * this.settings.darkLift;
-      colour.lerp(fallback, mask).addScaledVector(fallback, this.settings.darkLift * 0.12);
+      const lift = this.settings.darkLift * 0.12;
+      colour.lerp(fallback, mask);
+      colour.r += fallback.r * lift;
+      colour.g += fallback.g * lift;
+      colour.b += fallback.b * lift;
     }
 
     const depthFade = THREE.MathUtils.lerp(1, 0.16, smoothstep(depth01));

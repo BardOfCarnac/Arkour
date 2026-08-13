@@ -1,6 +1,7 @@
 import './styles.css';
 import { acceptanceArchitectureDocument } from '../architecture/document/acceptance';
 import { compileArchitectureDocument } from '../architecture/document/compile';
+import { attachRunnerCameraControls } from './camera-controls';
 import { NextAcceptanceRuntime } from './runtime';
 import { attachRunnerEntity } from './runner';
 import { attachViewerMode } from './viewer';
@@ -27,8 +28,8 @@ app.innerHTML = `
       </section>
 
       <section class="panel note-panel">
-        <b>Runner and viewer cameras are separate.</b><br />
-        V toggles the external spectator view without changing traversal state.
+        <b>Player and table cameras are independent.</b><br />
+        Player: drag to look, two-finger drag to lean. Table: drag to orbit, pinch/wheel to zoom, two-finger drag to pan.
       </section>
 
       <section id="encounter-gate" class="encounter-gate panel" aria-live="polite" hidden>
@@ -45,7 +46,8 @@ app.innerHTML = `
       </section>
 
       <section class="controls desktop-controls" aria-label="Run playback controls">
-        <button id="view-mode" type="button" aria-pressed="false">View: Runner</button>
+        <button id="view-mode" type="button" aria-pressed="false">View: Player</button>
+        <button id="camera-reset" type="button">Centre</button>
         <button id="play" type="button">Pause</button>
         <button id="reset" type="button">Reset</button>
         <input id="scrub" type="range" min="0" max="1" step="0.001" value="0" aria-label="Timeline" />
@@ -53,7 +55,10 @@ app.innerHTML = `
 
       <section class="mobile-controls" aria-label="Mobile playback controls">
         <input id="mobile-scrub" class="mobile-scrub" type="range" min="0" max="1" step="0.001" value="0" aria-label="Timeline" />
-        <button id="mobile-view-mode" class="mobile-view-mode" type="button" aria-pressed="false">VIEW: RUNNER</button>
+        <div class="mobile-camera-row">
+          <button id="mobile-view-mode" class="mobile-view-mode" type="button" aria-pressed="false">VIEW: PLAYER</button>
+          <button id="mobile-camera-reset" class="mobile-camera-reset" type="button">CENTRE</button>
+        </div>
         <div class="mobile-button-row">
           <button id="mobile-back" class="mobile-step" type="button" aria-label="Back five seconds">−5s</button>
           <button id="mobile-play" class="mobile-primary" type="button" aria-label="Pause or resume">Ⅱ</button>
@@ -80,6 +85,8 @@ const mobilePlay = get<HTMLButtonElement>('mobile-play');
 const mobileScrub = get<HTMLInputElement>('mobile-scrub');
 const viewButton = get<HTMLButtonElement>('view-mode');
 const mobileViewButton = get<HTMLButtonElement>('mobile-view-mode');
+const cameraResetButton = get<HTMLButtonElement>('camera-reset');
+const mobileCameraResetButton = get<HTMLButtonElement>('mobile-camera-reset');
 
 const world = compileArchitectureDocument(acceptanceArchitectureDocument);
 const runtime = new NextAcceptanceRuntime(world, acceptanceArchitectureDocument, {
@@ -99,14 +106,17 @@ const runtime = new NextAcceptanceRuntime(world, acceptanceArchitectureDocument,
   routeChoiceButtons: get('route-choice-buttons'),
 });
 attachRunnerEntity(runtime);
+const runnerCamera = attachRunnerCameraControls(runtime, get('viewport'));
 const viewer = attachViewerMode(runtime, get('viewport'), get('spectator-viewport'));
 
 const syncViewButtons = (): void => {
-  const spectator = viewer.mode === 'spectator';
-  viewButton.textContent = spectator ? 'View: Spectator' : 'View: Runner';
-  mobileViewButton.textContent = spectator ? 'VIEW: SPECTATOR' : 'VIEW: RUNNER';
-  viewButton.setAttribute('aria-pressed', String(spectator));
-  mobileViewButton.setAttribute('aria-pressed', String(spectator));
+  const table = viewer.mode === 'spectator';
+  viewButton.textContent = table ? 'View: Table' : 'View: Player';
+  mobileViewButton.textContent = table ? 'VIEW: TABLE' : 'VIEW: PLAYER';
+  cameraResetButton.textContent = table ? 'Follow' : 'Centre';
+  mobileCameraResetButton.textContent = table ? 'FOLLOW' : 'CENTRE';
+  viewButton.setAttribute('aria-pressed', String(table));
+  mobileViewButton.setAttribute('aria-pressed', String(table));
 };
 
 const toggleView = (): void => {
@@ -114,10 +124,22 @@ const toggleView = (): void => {
   syncViewButtons();
 };
 
+const resetCameraView = (): void => {
+  if (viewer.mode === 'spectator') viewer.resetView();
+  else runnerCamera.resetView();
+};
+
 viewButton.addEventListener('click', toggleView);
 mobileViewButton.addEventListener('click', toggleView);
+cameraResetButton.addEventListener('click', resetCameraView);
+mobileCameraResetButton.addEventListener('click', resetCameraView);
+resetButton.addEventListener('click', () => {
+  runnerCamera.resetView();
+  viewer.resetView();
+});
 window.addEventListener('keydown', (event) => {
   if (event.key.toLowerCase() === 'v') syncViewButtons();
+  if (event.key.toLowerCase() === 'c') resetCameraView();
 });
 
 const syncMobilePlay = (): void => {

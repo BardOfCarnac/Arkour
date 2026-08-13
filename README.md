@@ -14,9 +14,9 @@ The first milestone is deliberately narrow: a production-quality **Run page** th
 
 ## Run v0.1 contract
 
-The Run page owns traversal, camera motion, runtime state, proximity interactions, spatial branch selection, input, HUD, and rendering. It does **not** generate NET architecture.
+The Run page owns traversal, camera motion, runtime state, proximity interactions, spatial branch selection, input, HUD, and rendering. It does **not** run or adjudicate Cyberpunk RED rules.
 
-Gameplay topology and visual architecture are separate inputs. `RunWorld` describes real routes, encounters, and junctions; `ScenePlan` describes route-relative machinery around those routes without creating additional gameplay choices.
+Gameplay topology and visual architecture are separate inputs. `RunWorld` describes real routes, encounters, and junctions; `ScenePlan` describes the visual space around those routes without creating additional gameplay choices.
 
 The acceptance world exercises:
 
@@ -28,24 +28,31 @@ The acceptance world exercises:
 - smooth camera look-ahead and banking;
 - Hold/Resume visual state;
 - mouse/touch branch controls plus keyboard input;
-- route-relative scenery and decorative infrastructure;
-- deterministic seeded machinery-field and particle placement;
-- false infrastructure that can imply routes without becoming selectable graph edges.
+- a continuous milled solid volume around traversal space;
+- encounter-specific cavity proportions;
+- enlarged, readable junction cavities;
+- meaningful node machinery without unrelated city filler.
 
-## Architecture generator
+## Locked architecture baseline
 
-The next layer compiles `RunWorld` into a deterministic `ScenePlan`. The runtime remains unaware of architecture semantics: it still receives topology plus scenery as two separate inputs.
+The production architecture is now settled. See [`docs/architecture-baseline.md`](docs/architecture-baseline.md).
 
-`generateArchitecture(world, { seed })` currently builds four visual passes:
+Arkour represents a NET Architecture as **negative space milled through an enormous continuous solid volume**:
 
-- encounter architecture for Password, File, Control, Black ICE habitat, and Demon spaces;
-- route infrastructure such as heatsink fins, bus spines, component fields, cables, and deep-route vias;
-- junction switchyards with real exits surrounded by decorative false buses;
-- macro architecture that makes a small graph read as a much larger circuit-board megastructure.
+- the route is a bore, slot or cut through the mass;
+- ordinary transit stays comparatively tight and simple;
+- encounters widen the cut into cavities shaped by their type;
+- branch junctions open into the largest route cavities;
+- Password, File, Control, Black ICE and Demon machinery is the meaningful authored content inside those spaces;
+- the surrounding mass provides enclosure and scale rather than unrelated decorative scenery.
 
-The low-level renderer only knows reusable primitives. Alongside the original boxes, apertures, canyons, fields, interchanges, and decorative tubes, `ScenePlan` now supports cylinders, rings, and regular repeated members. Semantic component ideas such as connector gates, memory banks, relay hubs, switchyards, and transformer-like Demon cores live exclusively in the generator.
+The shorthand rule is:
 
-Generation is seed-stable: route, encounter, junction, and field variations derive their own seeds so changing one generated area does not require rearranging the whole scene.
+> **The route is the cut. The encounter determines the chamber. Everything else is mass.**
+
+`generateRouteFirstArchitecture(...)` is the production composition seam for this model. Earlier structural chassis, component-field and vertical-city experiments remain in the repository as reference material but are not the default production direction.
+
+The low-level renderer continues to operate on reusable `ScenePlan` primitives, keeping the runtime independent of NET Architecture semantics. Refinement should focus on cavity profiles, node machinery, materials, lighting, transitions, camera choreography and performance without reopening the fundamental spatial metaphor unless playtesting identifies a concrete failure that cannot be solved within it.
 
 ## Development
 
@@ -70,4 +77,4 @@ npm run build
 
 ## Not in v0.1
 
-Editing, multiplayer, rules automation, persistence, elaborate shaders, weather, sound systems, and WebXR remain out of scope until the Run loop and architecture-generation seams are solid.
+Editing, multiplayer, rules automation, persistence, elaborate shaders, weather, sound systems, and WebXR remain out of scope until the Run loop and presentation seams are solid.

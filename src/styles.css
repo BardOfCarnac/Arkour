@@ -7,8 +7,9 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #020406; }
-button { font: inherit; }
+button, input { font: inherit; }
 
 .run-shell { position: relative; width: 100%; height: 100dvh; overflow: hidden; background: #020406; }
 .viewport { position: absolute; inset: 0; }
@@ -50,6 +51,83 @@ button { font: inherit; }
 .encounter-hud strong { font-size: 15px; letter-spacing: .14em; }
 .encounter-hud span { margin-top: 4px; font-size: 10px; color: #aab8c1; letter-spacing: .12em; }
 .encounter-hud .range { color: #2af1c8; }
+
+.theme-toggle {
+  position: absolute;
+  z-index: 18;
+  top: calc(max(12px, env(safe-area-inset-top)) + 42px);
+  right: 14px;
+  border: 1px solid #31505a;
+  border-radius: 999px;
+  padding: 7px 11px;
+  color: #dce8ed;
+  background: #071015e6;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.theme-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(max(12px, env(safe-area-inset-top)) + 78px);
+  right: 14px;
+  width: min(330px, calc(100vw - 28px));
+  max-height: calc(100dvh - 155px);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid #29404a;
+  border-radius: 14px;
+  background: #050b0feF;
+  box-shadow: 0 18px 60px #000b;
+  backdrop-filter: blur(12px);
+}
+
+.theme-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.theme-panel-head strong {
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.theme-panel-head button,
+.theme-reset {
+  border: 1px solid #2a414b;
+  border-radius: 8px;
+  padding: 7px 9px;
+  color: #d7e4e9;
+  background: #091218;
+}
+
+.theme-file,
+.theme-control {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+  color: #b7c5cc;
+  font-size: 10px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.theme-file input {
+  width: 100%;
+  color: #dce8ed;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.theme-control input { width: 100%; accent-color: #2af1c8; }
+.theme-note { margin: 8px 0 0; color: #7f949f; font-size: 10px; line-height: 1.45; }
+.theme-reset { width: 100%; margin-top: 14px; }
 
 .branch-layer { position: absolute; z-index: 12; inset: 0; pointer-events: none; }
 .branch-choice {
@@ -112,4 +190,14 @@ button { font: inherit; }
   .debug { display: none; }
   .encounter-hud { top: 15%; }
   .branch-choice { font-size: 9px; padding: 7px 10px; }
+  .theme-toggle { top: calc(max(12px, env(safe-area-inset-top)) + 38px); }
+  .theme-panel {
+    top: auto;
+    left: 10px;
+    right: 10px;
+    bottom: calc(max(58px, env(safe-area-inset-bottom)) + 12px);
+    width: auto;
+    max-height: min(62dvh, 520px);
+    border-radius: 16px;
+  }
 }

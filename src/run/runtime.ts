@@ -5,6 +5,7 @@ import { RunInput, type RunAction } from './input';
 import { RuntimeRoute } from './route';
 import { addScenePlan } from './scenery';
 import type { ScenePlan } from './scene-plan';
+import { SceneTheme, type ThemeSettings } from './theme';
 import type { EncounterSpec, JunctionSpec, RunState, RunWorld } from './types';
 import { addParticles, addRouteGeometry } from './world';
 
@@ -28,6 +29,7 @@ export class RunRuntime {
   private readonly routes = new Map<string, RuntimeRoute>();
   private readonly routeMeshes: Map<string, THREE.Mesh>;
   private readonly cameraRig: CameraRig;
+  private readonly theme: SceneTheme;
   private readonly input = new RunInput();
   private readonly clock = new THREE.Clock();
 
@@ -64,10 +66,14 @@ export class RunRuntime {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 0.92;
     this.elements.canvasHost.appendChild(this.renderer.domElement);
 
     addScenePlan(this.scene, this.routes, scenePlan);
     this.cameraRig = new CameraRig(collectCameraObstacles(this.scene));
+    this.theme = new SceneTheme(this.scene, start);
+    this.theme.attach();
     addParticles(this.scene);
     this.routeMeshes = addRouteGeometry(this.scene, this.routes);
     this.highlightRoute(this.currentRoute.id);
@@ -83,9 +89,22 @@ export class RunRuntime {
     this.renderer.setAnimationLoop(this.tick);
   }
 
+  setTheme(settings: Partial<ThemeSettings>): void {
+    this.theme.setSettings(settings);
+  }
+
+  loadThemeImage(file: File): Promise<void> {
+    return this.theme.loadImage(file);
+  }
+
+  resetTheme(): void {
+    this.theme.resetField();
+  }
+
   destroy(): void {
     this.renderer.setAnimationLoop(null);
     this.input.destroy();
+    this.theme.destroy();
     window.removeEventListener('resize', this.resize);
     this.renderer.dispose();
   }

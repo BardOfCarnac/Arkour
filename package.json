@@ -4,8 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "node --check public/route-first-city/runner-view.js && node --check public/runner-pose-lab/app.js && node --check public/runner-pose-lab/mobile-drawer.js && node --check public/black-ice-glyph-editor/editor.js && node --check public/quadruped-glyph-editor/editor.js && node --check public/quadruped-glyph-editor/presets.js && node --check src/black-ice-methods-lab.js && tsc --noEmit && vite build",
+    "panther:assemble": "node scripts/assemble-panther-asset.mjs",
+    "dev": "npm run panther:assemble && vite",
+    "build": "npm run panther:assemble && node --check public/route-first-city/runner-view.js && node --check public/runner-pose-lab/app.js && node --check public/runner-pose-lab/mobile-drawer.js && node --check public/black-ice-glyph-editor/editor.js && node --check public/quadruped-glyph-editor/editor.js && node --check public/quadruped-glyph-editor/presets.js && node --check src/black-ice-methods-lab.js && tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

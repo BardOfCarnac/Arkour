@@ -8,12 +8,45 @@ export interface ThemeSettings {
   darkLift: number;
 }
 
+interface ThemedMaterial {
+  object: THREE.Object3D;
+  material: THREE.MeshStandardMaterial;
+  neutral: THREE.Color;
+  response: number;
+}
+
 const FIELD_WIDTH = 24;
 const FIELD_HEIGHT = 16;
-const PROJECTION_SIZE = new THREE.Vector2(120, 90);
+const FIELD_SPAN_X = 120;
+const FIELD_SPAN_Y = 90;
+const FIELD_DEPTH = 155;
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+function smoothstep(value: number): number {
+  const t = clamp01(value);
+  return t * t * (3 - 2 * t);
+}
+
+function hash2(x: number, y: number): number {
+  const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
+  return s - Math.floor(s);
+}
+
+function noise2(x: number, y: number): number {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const xf = x - xi;
+  const yf = y - yi;
+  const u = smoothstep(xf);
+  const v = smoothstep(yf);
+  const a = hash2(xi, yi);
+  const b = hash2(xi + 1, yi);
+  const c = hash2(xi, yi + 1);
+  const d = hash2(xi + 1, yi + 1);
+  return THREE.MathUtils.lerp(THREE.MathUtils.lerp(a, b, u), THREE.MathUtils.lerp(c, d, u), v);
 }
 
 function createFieldCanvas(): HTMLCanvasElement {
@@ -27,105 +60,104 @@ function drawDefaultField(canvas: HTMLCanvasElement): void {
   const context = canvas.getContext('2d');
   if (!context) return;
 
-  context.clearRect(0, 0, canvas.width, canvas.height);
   const base = context.createLinearGradient(0, 0, 0, canvas.height);
-  base.addColorStop(0, '#5bc8ea');
-  base.addColorStop(0.46, '#dcecf0');
-  base.addColorStop(0.72, '#8d5149');
-  base.addColorStop(1, '#101215');
+  base.addColorStop(0, '#58cbed');
+  base.addColorStop(0.44, '#dff5f5');
+  base.addColorStop(0.7, '#ed6b5d');
+  base.addColorStop(1, '#071116');
   context.fillStyle = base;
   context.fillRect(0, 0, canvas.width, canvas.height);
 
-  const coral = context.createRadialGradient(
-    canvas.width * 0.74,
-    canvas.height * 0.43,
-    0,
-    canvas.width * 0.74,
-    canvas.height * 0.43,
-    canvas.width * 0.48,
-  );
-  coral.addColorStop(0, 'rgba(242, 101, 83, .96)');
-  coral.addColorStop(0.62, 'rgba(225, 92, 78, .58)');
-  coral.addColorStop(1, 'rgba(150, 55, 50, 0)');
+  const coral = context.createRadialGradient(18, 7, 0, 18, 7, 12);
+  coral.addColorStop(0, 'rgba(245, 101, 83, .95)');
+  coral.addColorStop(0.65, 'rgba(219, 75, 68, .45)');
+  coral.addColorStop(1, 'rgba(120, 30, 30, 0)');
   context.fillStyle = coral;
   context.fillRect(0, 0, canvas.width, canvas.height);
+}
 
-  const cream = context.createRadialGradient(
-    canvas.width * 0.48,
-    canvas.height * 0.4,
-    0,
-    canvas.width * 0.48,
-    canvas.height * 0.4,
-    canvas.width * 0.34,
-  );
-  cream.addColorStop(0, 'rgba(255, 242, 221, .98)');
-  cream.addColorStop(0.55, 'rgba(255, 227, 207, .5)');
-  cream.addColorStop(1, 'rgba(255, 227, 207, 0)');
-  context.fillStyle = cream;
-  context.fillRect(0, 0, canvas.width, canvas.height);
-
-  const shadow = context.createLinearGradient(0, canvas.height * 0.55, canvas.width * 0.45, canvas.height);
-  shadow.addColorStop(0, 'rgba(3, 10, 14, 0)');
-  shadow.addColorStop(1, 'rgba(3, 8, 11, .86)');
-  context.fillStyle = shadow;
-  context.fillRect(0, 0, canvas.width, canvas.height);
+function projectorBasis(forward: THREE.Vector3): { right: THREE.Vector3; up: THREE.Vector3 } {
+  const seed = Math.abs(forward.y) > 0.92 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+  const right = new THREE.Vector3().crossVectors(forward, seed).normalize();
+  const up = new THREE.Vector3().crossVectors(right, forward).normalize();
+  return { right, up };
 }
 
 export class SceneTheme {
   private readonly fieldCanvas = createFieldCanvas();
-  private readonly fieldTexture: THREE.CanvasTexture;
-  private readonly decorated = new Set<THREE.MeshStandardMaterial>();
-  private ceiling: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial> | null = null;
-
-  private readonly uniforms = {
-    uThemeField: { value: null as THREE.Texture | null },
-    uThemeStrength: { value: 0.82 },
-    uThemeMottleStrength: { value: 0.68 },
-    uThemeMottleScale: { value: 0.46 },
-    uThemeDarkLift: { value: 0.24 },
-    uThemeProjectionSize: { value: PROJECTION_SIZE.clone() },
+  private readonly themed: ThemedMaterial[] = [];
+  private fieldPixels = new Uint8ClampedArray(FIELD_WIDTH * FIELD_HEIGHT * 4);
+  private readonly origin = new THREE.Vector3();
+  private readonly forward = new THREE.Vector3();
+  private readonly right = new THREE.Vector3();
+  private readonly up = new THREE.Vector3();
+  private readonly worldPosition = new THREE.Vector3();
+  private readonly relative = new THREE.Vector3();
+  private settings: ThemeSettings = {
+    strength: 0.82,
+    mottleStrength: 0.68,
+    mottleScale: 0.46,
+    darkLift: 0.24,
   };
 
   constructor(private readonly scene: THREE.Scene, private readonly startRoute: RuntimeRoute) {
     drawDefaultField(this.fieldCanvas);
-    this.fieldTexture = new THREE.CanvasTexture(this.fieldCanvas);
-    this.fieldTexture.colorSpace = THREE.SRGBColorSpace;
-    this.fieldTexture.minFilter = THREE.LinearFilter;
-    this.fieldTexture.magFilter = THREE.LinearFilter;
-    this.fieldTexture.wrapS = THREE.ClampToEdgeWrapping;
-    this.fieldTexture.wrapT = THREE.ClampToEdgeWrapping;
-    this.uniforms.uThemeField.value = this.fieldTexture;
+    this.refreshPixels();
+
+    const start = this.startRoute.curve.getPointAt(0);
+    this.forward.copy(this.startRoute.curve.getTangentAt(0)).normalize();
+    const basis = projectorBasis(this.forward);
+    this.right.copy(basis.right);
+    this.up.copy(basis.up);
+    this.origin.copy(start).addScaledVector(this.forward, -1.5);
   }
 
   attach(): void {
+    this.scene.updateMatrixWorld(true);
     this.scene.traverse((object) => {
       if (!(object instanceof THREE.Mesh)) return;
-      const materials = Array.isArray(object.material) ? object.material : [object.material];
-      for (const material of materials) {
-        if (material instanceof THREE.MeshStandardMaterial) this.decorateMaterial(material);
-      }
+
+      const source = Array.isArray(object.material) ? object.material : [object.material];
+      const replacements = source.map((material) => {
+        if (!(material instanceof THREE.MeshStandardMaterial)) return material;
+
+        const clone = material.clone();
+        const luminance = clone.color.r * 0.2126 + clone.color.g * 0.7152 + clone.color.b * 0.0722;
+        const level = THREE.MathUtils.clamp(luminance * 0.35, 0.022, 0.12);
+        const neutral = new THREE.Color(level, level, level);
+        clone.color.copy(neutral);
+        clone.emissive.setRGB(0, 0, 0);
+        clone.emissiveIntensity = 0;
+
+        this.themed.push({
+          object,
+          material: clone,
+          neutral,
+          response: clone.metalness > 0.65 ? 1 : clone.roughness > 0.78 ? 0.78 : 0.9,
+        });
+        return clone;
+      });
+
+      object.material = Array.isArray(object.material) ? replacements : replacements[0];
     });
-    this.addCeiling();
+
+    this.apply();
   }
 
   setSettings(settings: Partial<ThemeSettings>): void {
-    if (settings.strength !== undefined) {
-      this.uniforms.uThemeStrength.value = clamp01(settings.strength);
-    }
-    if (settings.mottleStrength !== undefined) {
-      this.uniforms.uThemeMottleStrength.value = clamp01(settings.mottleStrength);
-    }
-    if (settings.mottleScale !== undefined) {
-      this.uniforms.uThemeMottleScale.value = clamp01(settings.mottleScale);
-    }
-    if (settings.darkLift !== undefined) {
-      this.uniforms.uThemeDarkLift.value = clamp01(settings.darkLift);
-    }
+    this.settings = {
+      strength: settings.strength === undefined ? this.settings.strength : clamp01(settings.strength),
+      mottleStrength: settings.mottleStrength === undefined ? this.settings.mottleStrength : clamp01(settings.mottleStrength),
+      mottleScale: settings.mottleScale === undefined ? this.settings.mottleScale : clamp01(settings.mottleScale),
+      darkLift: settings.darkLift === undefined ? this.settings.darkLift : clamp01(settings.darkLift),
+    };
+    this.apply();
   }
 
   resetField(): void {
     drawDefaultField(this.fieldCanvas);
-    this.fieldTexture.needsUpdate = true;
+    this.refreshPixels();
+    this.apply();
   }
 
   async loadImage(file: File): Promise<void> {
@@ -143,175 +175,88 @@ export class SceneTheme {
       const scale = Math.max(staging.width / bitmap.width, staging.height / bitmap.height);
       const width = bitmap.width * scale;
       const height = bitmap.height * scale;
-      stagingContext.drawImage(
-        bitmap,
-        (staging.width - width) * 0.5,
-        (staging.height - height) * 0.5,
-        width,
-        height,
-      );
+      stagingContext.drawImage(bitmap, (staging.width - width) / 2, (staging.height - height) / 2, width, height);
 
       fieldContext.clearRect(0, 0, FIELD_WIDTH, FIELD_HEIGHT);
       fieldContext.imageSmoothingEnabled = true;
       fieldContext.imageSmoothingQuality = 'high';
       fieldContext.drawImage(staging, 0, 0, FIELD_WIDTH, FIELD_HEIGHT);
-      this.fieldTexture.needsUpdate = true;
+      this.refreshPixels();
+      this.apply();
     } finally {
       bitmap.close();
     }
   }
 
   destroy(): void {
-    this.ceiling?.geometry.dispose();
-    this.ceiling?.material.dispose();
-    this.fieldTexture.dispose();
+    for (const entry of this.themed) entry.material.dispose();
+    this.themed.length = 0;
   }
 
-  private decorateMaterial(material: THREE.MeshStandardMaterial): void {
-    if (this.decorated.has(material)) return;
-    this.decorated.add(material);
-
-    const response = material.metalness > 0.65 ? 0.9 : material.roughness > 0.78 ? 0.58 : 0.72;
-    const responseUniform = { value: response };
-    const originalOnBeforeCompile = material.onBeforeCompile.bind(material);
-
-    material.onBeforeCompile = (shader, renderer) => {
-      originalOnBeforeCompile(shader, renderer);
-      Object.assign(shader.uniforms, this.uniforms, { uThemeResponse: responseUniform });
-
-      shader.vertexShader = shader.vertexShader
-        .replace(
-          '#include <common>',
-          `#include <common>\nvarying vec3 vThemeWorldPosition;\nvarying vec3 vThemeWorldNormal;`,
-        )
-        .replace(
-          '#include <begin_vertex>',
-          `#include <begin_vertex>\nvThemeWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvThemeWorldNormal = normalize(mat3(modelMatrix) * normal);`,
-        );
-
-      shader.fragmentShader = shader.fragmentShader
-        .replace(
-          '#include <common>',
-          `#include <common>
-uniform sampler2D uThemeField;
-uniform float uThemeStrength;
-uniform float uThemeMottleStrength;
-uniform float uThemeMottleScale;
-uniform float uThemeDarkLift;
-uniform float uThemeResponse;
-uniform vec2 uThemeProjectionSize;
-varying vec3 vThemeWorldPosition;
-varying vec3 vThemeWorldNormal;
-
-float arkourHash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-}
-
-float arkourNoise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  float a = arkourHash(i);
-  float b = arkourHash(i + vec2(1.0, 0.0));
-  float c = arkourHash(i + vec2(0.0, 1.0));
-  float d = arkourHash(i + vec2(1.0, 1.0));
-  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-}
-
-vec3 arkourThemeColor(vec3 worldPosition) {
-  vec2 uv = clamp(worldPosition.xy / uThemeProjectionSize + vec2(0.5), vec2(0.0), vec2(1.0));
-  vec3 source = texture2D(uThemeField, uv).rgb;
-  float scale = mix(0.018, 0.108, uThemeMottleScale);
-  float broad = arkourNoise(worldPosition.xy * scale * 0.45 + vec2(11.0, -7.0)) - 0.5;
-  float fine = arkourNoise(worldPosition.xy * scale * 2.2 + vec2(-29.0, 19.0)) - 0.5;
-  source *= max(0.42, 1.0 + broad * 0.55 * uThemeMottleStrength + fine * 0.22 * uThemeMottleStrength);
-
-  float luminance = dot(source, vec3(0.2126, 0.7152, 0.0722));
-  vec3 darkBlue = vec3(0.018, 0.055, 0.075);
-  vec3 oxblood = vec3(0.082, 0.025, 0.024);
-  vec3 fallback = mix(darkBlue, oxblood, arkourNoise(worldPosition.xy * scale * 0.7 + 4.0));
-  float darkMask = 1.0 - smoothstep(0.025, 0.19, luminance);
-  source = mix(source, fallback, darkMask * uThemeDarkLift);
-  source += fallback * uThemeDarkLift * 0.16;
-  return clamp(source, vec3(0.0), vec3(1.25));
-}`,
-        )
-        .replace(
-          'vec4 diffuseColor = vec4( diffuse, opacity );',
-          `vec4 diffuseColor = vec4( diffuse, opacity );
-vec3 arkourTheme = arkourThemeColor(vThemeWorldPosition);
-float arkourFacing = 0.34 + 0.66 * abs(normalize(vThemeWorldNormal).z);
-float arkourMix = uThemeStrength * uThemeResponse * arkourFacing;
-diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb, arkourTheme * 0.30), arkourMix);`,
-        )
-        .replace(
-          'vec3 totalEmissiveRadiance = emissive;',
-          `vec3 totalEmissiveRadiance = emissive;
-totalEmissiveRadiance += arkourTheme * arkourMix * 0.10;`,
-        );
-    };
-
-    material.customProgramCacheKey = () => 'arkour-image-theme-v1';
-    material.needsUpdate = true;
+  private refreshPixels(): void {
+    const context = this.fieldCanvas.getContext('2d');
+    if (!context) return;
+    this.fieldPixels = context.getImageData(0, 0, FIELD_WIDTH, FIELD_HEIGHT).data;
   }
 
-  private addCeiling(): void {
-    const material = new THREE.ShaderMaterial({
-      uniforms: this.uniforms,
-      vertexShader: `
-varying vec2 vUv;
-void main() {
-  vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}`,
-      fragmentShader: `
-uniform sampler2D uThemeField;
-uniform float uThemeStrength;
-uniform float uThemeMottleStrength;
-uniform float uThemeMottleScale;
-uniform float uThemeDarkLift;
-varying vec2 vUv;
+  private sampleField(u: number, v: number): THREE.Color {
+    const x = Math.round(clamp01(u) * (FIELD_WIDTH - 1));
+    const y = Math.round(clamp01(v) * (FIELD_HEIGHT - 1));
+    const index = (y * FIELD_WIDTH + x) * 4;
+    return new THREE.Color(
+      this.fieldPixels[index] / 255,
+      this.fieldPixels[index + 1] / 255,
+      this.fieldPixels[index + 2] / 255,
+    );
+  }
 
-float hash21(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-}
+  private projectedColour(position: THREE.Vector3): { colour: THREE.Color; intensity: number } {
+    this.relative.copy(position).sub(this.origin);
+    const depth = this.relative.dot(this.forward);
+    const px = this.relative.dot(this.right);
+    const py = this.relative.dot(this.up);
+    let u = px / FIELD_SPAN_X + 0.5;
+    let v = py / FIELD_SPAN_Y + 0.5;
 
-float noise21(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  return mix(
-    mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
-    mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x),
-    f.y
-  );
-}
+    if (depth < -1 || u < 0 || u > 1 || v < 0 || v > 1) {
+      return { colour: new THREE.Color(0, 0, 0), intensity: 0 };
+    }
 
-void main() {
-  vec3 source = texture2D(uThemeField, vUv).rgb;
-  float scale = mix(4.0, 18.0, uThemeMottleScale);
-  float broad = noise21(vUv * scale * 0.45 + vec2(8.0, 3.0)) - 0.5;
-  float fine = noise21(vUv * scale * 2.1 + vec2(-4.0, 12.0)) - 0.5;
-  source *= max(0.4, 1.0 + broad * 0.62 * uThemeMottleStrength + fine * 0.22 * uThemeMottleStrength);
-  float luminance = dot(source, vec3(0.2126, 0.7152, 0.0722));
-  vec3 fallback = mix(vec3(0.02, 0.07, 0.09), vec3(0.09, 0.025, 0.02), noise21(vUv * 7.0));
-  source = mix(source, fallback, (1.0 - smoothstep(0.02, 0.2, luminance)) * uThemeDarkLift);
-  source += fallback * uThemeDarkLift * 0.16;
-  source = mix(vec3(0.025, 0.03, 0.032), source, uThemeStrength);
-  gl_FragColor = vec4(source, 1.0);
-}`,
-      side: THREE.FrontSide,
-      toneMapped: false,
-    });
+    const depth01 = clamp01(Math.max(0, depth) / FIELD_DEPTH);
+    const scale = THREE.MathUtils.lerp(0.018, 0.108, this.settings.mottleScale);
+    const broad = noise2(px * scale * 0.45 + depth * 0.006 + 11, py * scale * 0.45 - 7) - 0.5;
+    const fine = noise2(px * scale * 2.2 - depth * 0.012 - 29, py * scale * 2.2 + 19) - 0.5;
+    u += broad * (0.012 + depth01 * 0.026) * this.settings.mottleStrength;
+    v += fine * (0.012 + depth01 * 0.026) * this.settings.mottleStrength;
 
-    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(120, 90), material);
-    const start = this.startRoute.curve.getPointAt(0);
-    const tangent = this.startRoute.curve.getTangentAt(0).normalize();
-    ceiling.position.copy(start).addScaledVector(tangent, -5);
-    ceiling.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent);
-    ceiling.renderOrder = -2;
-    ceiling.name = 'theme:ceiling';
-    this.scene.add(ceiling);
-    this.ceiling = ceiling;
+    const colour = this.sampleField(u, v);
+    const mottle = Math.max(0.5, 1 + broad * 0.55 * this.settings.mottleStrength + fine * 0.22 * this.settings.mottleStrength);
+    colour.multiplyScalar(mottle);
+
+    const luminance = colour.r * 0.2126 + colour.g * 0.7152 + colour.b * 0.0722;
+    if (luminance < 0.2 && this.settings.darkLift > 0) {
+      const darkTeal = new THREE.Color(0x06171b);
+      const oxblood = new THREE.Color(0x1d0709);
+      const fallback = darkTeal.lerp(oxblood, noise2(px * scale * 0.72 + 4, py * scale * 0.72 + 4));
+      const mask = (1 - smoothstep((luminance - 0.025) / 0.175)) * this.settings.darkLift;
+      colour.lerp(fallback, mask).addScaledVector(fallback, this.settings.darkLift * 0.12);
+    }
+
+    const depthFade = THREE.MathUtils.lerp(1, 0.16, smoothstep(depth01));
+    return { colour, intensity: depthFade };
+  }
+
+  private apply(): void {
+    this.scene.updateMatrixWorld(true);
+    for (const entry of this.themed) {
+      entry.object.getWorldPosition(this.worldPosition);
+      const projected = this.projectedColour(this.worldPosition);
+      const amount = this.settings.strength * entry.response * projected.intensity;
+
+      entry.material.color.copy(entry.neutral).lerp(projected.colour, amount * 0.9);
+      entry.material.emissive.copy(projected.colour);
+      entry.material.emissiveIntensity = amount * 0.72;
+      entry.material.needsUpdate = true;
+    }
   }
 }

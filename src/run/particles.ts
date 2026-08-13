@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { seededRandom } from './random';
-import type { SceneTheme } from './theme';
+import type { ParticleLightSampler } from './particle-light-types';
 
 const AMBIENT_COUNT = 360;
 const WAKE_COUNT = 560;
@@ -67,7 +67,7 @@ export class RunParticles {
   private wakeAccumulator = 0;
   private colourAccumulator = 0;
 
-  constructor(private readonly scene: THREE.Scene, private readonly theme: SceneTheme) {
+  constructor(private readonly scene: THREE.Scene, private readonly theme: ParticleLightSampler) {
     this.seedAmbient();
 
     for (let index = 0; index < WAKE_COUNT; index += 1) {
